@@ -1,0 +1,15 @@
+# Виртуальное окружение
+.venv/
+.venv
+
+# Python кэш
+__pycache__/
+*.pyc
+*.pyo
+
+# Переменные окружения
+.env
+
+# IDE
+.vscode/
+.idea/
