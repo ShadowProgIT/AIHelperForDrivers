@@ -28,6 +28,23 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
+  python-backend:
+    build: ./python-backend
+    container_name: python-ai-service
+    ports:
+      - "8000:8000"  
+    volumes:
+      - ./python-backend:/app
+      - ./data:/app/data
+    environment:
+      - OLLAMA_URL=http://ollama-server:11434  
+      - REDIS_HOST=redis-cache                  
+      - REDIS_PORT=6379
+    depends_on:
+      - ollama
+      - redis
+    restart: unless-stopped
+
 volumes:
   ollama_data:
   redis_data:

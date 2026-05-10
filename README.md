@@ -19,3 +19,6 @@ ollama create qwen3.5-driving -f /Modelfile (уже в bash-е внутри ол
 
 ollama list (проверка наличия модели qwen в ollama)
 
+Порты:
+Redis - 6379
+Python - 8000
