@@ -22,3 +22,14 @@ ollama list (проверка наличия модели qwen в ollama)
 Порты:
 Redis - 6379
 Python - 8000
+
+# **Endpoint:** `POST /api/ai-process`  
+# **Content-Type:** `application/json`
+
+json
+{
+  "sessionId": "string",
+  "requestMode": "theory" | "practice",
+  "content": "string",
+  "image_url": "string | null"
+}
