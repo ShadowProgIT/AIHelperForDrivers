@@ -9,10 +9,15 @@
 # Контракт. Префикс для хранения java-сессий в Redis
 backend:session
 
+# Запуск проекта. Команды для запуска проекта
+1. mvn clean install
+2. mvn spring-boot:run -pl api-realisation
+
 # Развёртывание модели. PowerShell, Docker. Команды
 Создаёшь папки на диске. в driving-ai файл docker-compose.yml
 
-docker compose up -d
+# Контейнеризация. Команды в Docker
+docker compose up -d 
 
 docker exec -it ollama-server sh (зайти в оламу в ней работать)
 ollama create qwen3.5-driving -f /Modelfile (уже в bash-е внутри оламы)
@@ -33,3 +38,7 @@ json
   "content": "string",
   "image_url": "string | null"
 }
+
+
+# Продумать.
+1. В Redis сессии удаляются по TTL, но они остаются в postgreSQL. Продумать удаление и из postgres
