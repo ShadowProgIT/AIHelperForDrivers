@@ -1,23 +1,47 @@
 # app/main.py
-from fastapi import FastAPI
-from app.utils.llm_client import call_llm
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Optional, Literal
+from app.models.response import AIResponse
+from app.agents.theory_agent import process_theory_request
 
-app = FastAPI(
-    title="AI Driving Assistant",
-    description="Помощник для обучения вождению с использованием AI",
-    version="1.0.0"
-)
+# from app.agents.practice_agent import process_practice_request  # позже
 
-@app.get("/")
-def root():
-    return {"status": "ok", "service": "python-backend"}
+app = FastAPI(title="AI Driving Assistant")
 
-@app.get("/health")
-def health_check():
-    return {"status": "healthy", "llm": "connected"}
 
-@app.post("/api/test")
-def test_llm(prompt: str = "Привет! Кто ты?"):
-    """Тестовый эндпоинт для проверки связи с LLM"""
-    answer = call_llm(prompt)
-    return {"prompt": prompt, "answer": answer}
+class AIRequest(BaseModel):
+    sessionId: str
+    requestMode: Literal["theory", "practice"]
+    content: str
+    image_url: Optional[str] = None
+
+
+@app.post("/api/ai-process", response_model=AIResponse)
+async def handle_ai_request(request: AIRequest):
+    try:
+        if request.requestMode == "theory":
+            result = process_theory_request(request.content, request.sessionId)
+            return AIResponse.theory_success(
+                session_id=request.sessionId,
+                answer=result["answer"],
+                sources=result.get("sources", [])
+            )
+
+        elif request.requestMode == "practice":
+            # Заглушка для практики
+            return AIResponse.practice_success(
+                session_id=request.sessionId,
+                answer="Практический режим в разработке",
+                image_desc=None
+            )
+
+        else:
+            raise HTTPException(status_code=400, detail="Invalid requestMode")
+
+    except Exception as e:
+        return AIResponse.error(
+            session_id=request.sessionId,
+            message=str(e),
+            code=500
+        )
