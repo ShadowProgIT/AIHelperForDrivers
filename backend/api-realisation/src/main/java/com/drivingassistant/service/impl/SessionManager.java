@@ -1,8 +1,10 @@
 package com.drivingassistant.service.impl;
 
+import com.drivingassistant.repository.MessageRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.util.UUID;
@@ -13,13 +15,16 @@ public class SessionManager {
     private static final String KEY_PREFIX = "session:";
 
     private final StringRedisTemplate redisTemplate;
+    private final MessageRepository messageRepository;
     private final Duration sessionTtl;
 
     public SessionManager(
             StringRedisTemplate redisTemplate,
+            MessageRepository messageRepository,
             @Value("${session.ttl.seconds:7200}") long sessionTtlSeconds
     ) {
         this.redisTemplate = redisTemplate;
+        this.messageRepository = messageRepository;
         this.sessionTtl = Duration.ofSeconds(sessionTtlSeconds > 0 ? sessionTtlSeconds : 7200);
     }
 
@@ -48,13 +53,21 @@ public class SessionManager {
         }
     }
 
-    public void deleteSession(String sessionId) {
-        if (sessionId != null && !sessionId.isBlank()) {
-            redisTemplate.delete(buildKey(sessionId));
-        }
-    }
-
     private String buildKey(String sessionId) {
         return KEY_PREFIX + sessionId;
     }
+
+    @Transactional // ← важно: атомарность БД + логика
+    public void deleteSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return;
+
+        // 1. Чистим PostgreSQL (в транзакции)
+        int deleted = messageRepository.deleteBySessionId(sessionId);
+
+        // 2. Чистим Redis
+        redisTemplate.delete(buildKey(sessionId));
+    }
+
+
+
 }

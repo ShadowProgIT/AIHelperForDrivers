@@ -6,8 +6,10 @@ import com.drivingassistant.dto.ChatResponseDto;
 import com.drivingassistant.entity.Message;
 import com.drivingassistant.enums.RequestMode;
 import com.drivingassistant.enums.SenderType;
+import com.drivingassistant.exceptions.SessionExpiredException;
 import com.drivingassistant.repository.MessageRepository;
 import com.drivingassistant.service.contract.AiChatService;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,12 +28,11 @@ public class AiChatServiceImpl implements AiChatService {
     private final MessageRepository messageRepository;
 
     public AiChatServiceImpl(
-            WebClient.Builder webClientBuilder,
+            @Qualifier("aiWebClient") WebClient aiWebClient,
             SessionManager sessionManager,
-            MessageRepository messageRepository,
-            @Value("${ai.service.url:http://localhost:8000}") String aiServiceUrl
+            MessageRepository messageRepository
     ) {
-        this.aiWebClient = webClientBuilder.baseUrl(aiServiceUrl).build();
+        this.aiWebClient = aiWebClient;
         this.sessionManager = sessionManager;
         this.messageRepository = messageRepository;
     }
@@ -92,7 +93,7 @@ public class AiChatServiceImpl implements AiChatService {
     public List<ChatMessageDto> getChatHistory(String sessionId) {
         // Валидация сессии
         if (!sessionManager.isValidSession(sessionId)) {
-            return List.of(); // или бросить исключение
+            throw new SessionExpiredException("Сессия " + sessionId + " не найдена или истекла");
         }
 
         // Получаем историю из БД, отсортированную по времени

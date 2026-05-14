@@ -51,9 +51,11 @@ def get_vectorstore():
     # Увеличиваем чанки до 1500 символов, чтобы захватывать целые пункты
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1500,
-        chunk_overlap=200,
-        separators=["\n\n", "\n", " ", ""]
+        chunk_overlap=0,
+        separators=["\n\n"]
     )
+
+
     chunks = text_splitter.split_documents(documents)
 
     print(f"Создано {len(chunks)} чанков")
