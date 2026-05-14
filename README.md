@@ -42,3 +42,8 @@ json
 
 # Продумать.
 1. В Redis сессии удаляются по TTL, но они остаются в postgreSQL. Продумать удаление и из postgres
+
+
+# Redis и работа с Java
+
+Добавлен Redis в Python (хранение самм. контекста сервиса) и схемы запроса и ответа(JavaRequest JavaResponse)

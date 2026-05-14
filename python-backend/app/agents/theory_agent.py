@@ -1,8 +1,11 @@
 # app/agents/theory_agent.py
 import re
 from app.rag.vector_store import search_pdd
+from app.utils.redis_client import redis_memory
 from app.utils.llm_client import get_llm
+import logging
 
+logger = logging.getLogger(__name__)
 
 def clean_llm_response(text: str) -> str:
     """
@@ -31,71 +34,59 @@ def clean_llm_response(text: str) -> str:
     if not text:
         return "Модель не сгенерировала ответ на русском языке."
 
-    return text
+    return text.strip()
 
 
-def process_theory_request(question: str, session_id: str):
-    """
-    Обрабатывает вопрос по ПДД.
-    """
-    print(f"🔍 Поиск ответа на вопрос: {question}")
+def generate_new_summary(old_summary: str, question: str, answer: str) -> str:
+    """Генерирует обновленное краткое резюме диалога"""
+    prompt = f"""Ты ведешь краткую заметку о ходе диалога. Обнови резюме, добавив суть последнего обмена.
+Старое резюме: "{old_summary or 'Диалог начался.'}"
+Вопрос: "{question}"
+Ответ: "{answer}"
+Новое резюме (2-3 предложения, только суть):"""
 
-    # 1. Поиск контекста (увеличиваем k до 5 для лучшего охвата)
-    try:
-        context, sources = search_pdd(question, k=5)
-        print(f"✅ Найдено источников: {len(sources)}")
-        # Для отладки можно раскомментировать:
-        # print(f"📄 Контекст: {context[:200]}...")
-    except Exception as e:
-        print(f"❌ Ошибка RAG: {e}")
-        return {
-            "answer": "Ошибка при поиске в базе ПДД.",
-            "sources": []
-        }
-
-    # 2. Формируем ЖЁСТКИЙ промпт
-    # Мы явно запрещаем английский и требуем краткости
-    system_prompt = """Ты — эксперт по ПДД РФ. Твоя задача — отвечать на вопросы СТРОГО на основе предоставленного текста.
-
-ПРАВИЛА ОТВЕТА:
-1. ЯЗЫК: Отвечай ТОЛЬКО на русском языке. Никакого английского.
-2. КОНТЕКСТ: Используй ТОЛЬКО предоставленный ниже текст. Если ответа нет, так и напиши: "В предоставленных документах нет информации".
-3. ССЫЛКИ: Обязательно указывай пункты ПДД (например, "Согласно п. 10.1..."), если они есть в тексте.
-4. ФОРМАТ: Отвечай кратко, по делу. Без вступлений типа "Конечно, вот ответ".
-5. ЗАПРЕТ: НЕ выводи свои мысли, рассуждения или теги <think>. Сразу пиши ответ.
-
---- ТЕКСТ ИЗ ПДД ---
-{context}
----------------------
-
-ВОПРОС: {question}
-
-ОТВЕТ (на русском):"""
-
-    final_prompt = system_prompt.format(context=context, question=question)
-
-    # 3. Вызов модели
     try:
         llm = get_llm()
-        # Уменьшаем num_predict, чтобы не генерировала лишнего (если поддерживается)
-        # В LangChain это можно передать через model_kwargs, но пока оставим дефолт
-        raw_response = llm.invoke(final_prompt)
-
-        print(f"📝 Сырой ответ (длина {len(raw_response)}): {raw_response[:100]}...")
-
-        # 4. Чистка
-        clean_answer = clean_llm_response(raw_response)
-
-        print(f"✅ Чистый ответ: {clean_answer}")
-
+        raw = llm.invoke(prompt)
+        return clean_llm_response(raw)
     except Exception as e:
-        print(f"❌ Ошибка LLM: {e}")
-        return {
-            "answer": f"Ошибка генерации: {str(e)}",
-            "sources": sources
-        }
+        logger.error(f"Summary generation failed: {e}")
+        return old_summary  # Fallback: сохраняем старое
+
+
+def process_theory_request(question: str, session_id: str) -> dict:
+    """Основная логика Theory Agent"""
+    # 1. Загружаем текущее саммари из Redis
+    current_summary = redis_memory.get_summary(session_id) or ""
+
+    # 2. RAG-поиск по текущему вопросу
+    rag_context, sources = search_pdd(question, k=5)
+
+    # 3. Формируем промпт
+    system_prompt = f"""Ты — эксперт по ПДД РФ. Отвечай кратко, по делу, со ссылками на пункты.
+Используй ТОЛЬКО предоставленный контекст из правил.
+
+РЕЗЮМЕ ПРЕДЫДУЩЕГО ДИАЛОГА:
+{current_summary}
+
+АКТУАЛЬНЫЙ КОНТЕКСТ ИЗ ПДД:
+{rag_context}
+
+ВОПРОС:
+{question}
+
+ОТВЕТ:"""
+
+    # 4. Генерация ответа
+    try:
+        llm = get_llm()
+        raw_answer = llm.invoke(system_prompt)
+        final_answer = clean_llm_response(raw_answer)
+    except Exception as e:
+        logger.error(f"LLM generation failed: {e}")
+        return {"answer": "Ошибка генерации ответа.", "sources": sources}
 
     return {
-        "answer": clean_answer,
+        "answer": final_answer,
         "sources": sources
     }
