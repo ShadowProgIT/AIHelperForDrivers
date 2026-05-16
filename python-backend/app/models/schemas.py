@@ -1,29 +1,32 @@
 # app/models/schemas.py
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
+from typing import Literal, Optional
 
 
 class JavaRequest(BaseModel):
-    sessionId: str = Field(..., description="ID сессии от Java")
-    content: str = Field(..., description="Текст вопроса")
-    mode: Literal["THEORY", "PRACTICE"] = Field(..., description="Режим")
-    image_url: Optional[str] = Field(None, description="URL изображения")
+    sessionId: str = Field(..., description="ID сессии")
+    requestType: Literal["TEXT", "AUDIO"] = Field(..., description="Тип запроса")
+    content: Optional[str] = Field(None, description="Текст вопроса (для TEXT)")
+    audio_file: Optional[str] = Field(None, description="Имя файла (для AUDIO)")
 
 
 class JavaResponse(BaseModel):
     sessionId: str
-    requestMode: Literal["THEORY", "PRACTICE"]
+    requestType: Literal["TEXT", "AUDIO", "ERROR"]
     content: str
-    image_url: Optional[str] = None
+    audio_response: Optional[str] = None
+
+    class Config:
+        exclude_none = True
 
     @classmethod
-    def theory(cls, session_id: str, answer: str) -> "JavaResponse":
-        return cls(sessionId=session_id, requestMode="THEORY", content=answer)
+    def make_text_response(cls, session_id: str, answer: str) -> "JavaResponse":
+        return cls(sessionId=session_id, requestType="TEXT", content=answer)
 
     @classmethod
-    def practice(cls, session_id: str, answer: str, image_desc: Optional[str] = None) -> "JavaResponse":
-        return cls(sessionId=session_id, requestMode="PRACTICE", content=answer, image_url=image_desc)
+    def make_audio_response(cls, session_id: str, answer: str, filename: str) -> "JavaResponse":
+        return cls(sessionId=session_id, requestType="AUDIO", content=answer, audio_response=filename)
 
     @classmethod
-    def error(cls, session_id: str, mode: str, message: str) -> "JavaResponse":
-        return cls(sessionId=session_id, requestMode=mode, content=f"Ошибка: {message}")
+    def make_error_response(cls, session_id: str, message: str) -> "JavaResponse":
+        return cls(sessionId=session_id, requestType="ERROR", content=message)

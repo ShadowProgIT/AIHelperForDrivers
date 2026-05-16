@@ -6,7 +6,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
-from rank_bm25 import BM25Okapi
+# from rank_bm25 import BM25Okapi
 import re
 
 warnings.filterwarnings("ignore", message="Failed to send telemetry event")
@@ -79,7 +79,7 @@ def _build_bm25_index():
 
     # Токенизируем для BM25 (простая токенизация по словам)
     tokenized_docs = [doc.split() for doc in bm25_documents]
-    bm25_index = BM25Okapi(tokenized_docs)
+    # bm25_index = BM25Okapi(tokenized_docs)
 
     print(f"BM25 индекс построен ({len(bm25_documents)} документов)")
     return bm25_index
