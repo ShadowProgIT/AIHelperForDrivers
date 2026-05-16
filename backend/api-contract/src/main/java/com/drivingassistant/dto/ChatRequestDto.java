@@ -1,36 +1,34 @@
 package com.drivingassistant.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.validation.constraints.NotBlank;
 import io.swagger.v3.oas.annotations.media.Schema;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
-
-@Schema(description = "Запрос пользователя к ИИ-ассистенту вождения")
+@Schema(description = "Запрос пользователя к ИИ-ассистенту")
+@JsonInclude(JsonInclude.Include.NON_NULL) 
 public record ChatRequestDto(
+        @Schema(description = "ID сессии")
+        @JsonProperty("sessionId") String sessionId,
 
-        @Schema(
-                description = "Уникальный идентификатор сессии пользователя",
-                example = "user-12345-session-abc",
-                requiredMode = Schema.RequiredMode.NOT_REQUIRED
-        )
-        @JsonProperty("sessionId")
-        String sessionId,
+        @Schema(description = "Тип запроса: TEXT или AUDIO", requiredMode = Schema.RequiredMode.REQUIRED, allowableValues = {"TEXT", "AUDIO"})
+        @JsonProperty("requestType") String requestType,
 
-        @Schema(
-                description = "Текст сообщения или вопроса пользователя",
-                example = "Как правильно парковаться задним ходом?",
-                requiredMode = Schema.RequiredMode.REQUIRED
-        )
-        @NotBlank(message = "Текст сообщения не может быть пустым")
-        @JsonProperty("content")
-        String content,
+        @Schema(description = "Текст сообщения (только для TEXT)")
+        @JsonProperty("content") String content,
 
-        @Schema(
-                description = "Опциональный URL изображения (для анализа дорожной ситуации)",
-                example = "https://example.com/road-image.jpg",
-                requiredMode = Schema.RequiredMode.NOT_REQUIRED
-        )
-        @JsonProperty("image_url")
-        String imageUrl
-
-) {}
+        @Schema(description = "Имя аудиофайла (только для AUDIO)")
+        @JsonProperty("audio_file") String audioFile
+) {
+        // Компактный конструктор для валидации
+        public ChatRequestDto {
+                if (requestType == null || requestType.isBlank()) {
+                        throw new IllegalArgumentException("Поле requestType обязательно");
+                }
+                if ("TEXT".equalsIgnoreCase(requestType) && (content == null || content.isBlank())) {
+                        throw new IllegalArgumentException("Для TEXT запроса поле content обязательно");
+                }
+                if ("AUDIO".equalsIgnoreCase(requestType) && (audioFile == null || audioFile.isBlank())) {
+                        throw new IllegalArgumentException("Для AUDIO запроса поле audioFile обязательно");
+                }
+        }
+}

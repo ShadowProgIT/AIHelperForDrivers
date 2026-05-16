@@ -28,54 +28,67 @@ public class Message {
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
-    @Column(name = "image_url")
-    private String imageUrl;
-
     @Column(name = "timestamp", nullable = false, updatable = false)
     private Instant timestamp;
 
-    public Message() {
-    }
+    @Column(name = "audio_file")
+    private String audioFile;
 
-    public Message(String sessionId, SenderType sender, String content, String imageUrl) {
+    public Message() {}
+
+    public Message(String sessionId, SenderType sender, String content, String audioFile) {
         this.sessionId = sessionId;
         this.sender = sender;
         this.content = content;
-        this.imageUrl = imageUrl;
+        this.audioFile = audioFile;
         this.timestamp = Instant.now();
     }
 
-    // Getters
     public Long getId() {
         return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public String getSessionId() {
         return sessionId;
     }
 
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
+
     public SenderType getSender() {
         return sender;
+    }
+
+    public void setSender(SenderType sender) {
+        this.sender = sender;
     }
 
     public String getContent() {
         return content;
     }
 
-    public String getImageUrl() {
-        return imageUrl;
+    public void setContent(String content) {
+        this.content = content;
     }
 
     public Instant getTimestamp() {
         return timestamp;
     }
 
-    // Setters (если нужны)
-    public void setContent(String content) {
-        this.content = content;
+    public void setTimestamp(Instant timestamp) {
+        this.timestamp = timestamp;
     }
 
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
+    public String getAudioFile() {
+        return audioFile;
+    }
+
+    public void setAudioFile(String audioFile) {
+        this.audioFile = audioFile;
     }
 }
