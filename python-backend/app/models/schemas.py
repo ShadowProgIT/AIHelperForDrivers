@@ -1,7 +1,6 @@
 # app/models/schemas.py
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Literal, Optional
-
 
 class JavaRequest(BaseModel):
     sessionId: str = Field(..., description="ID сессии")
@@ -9,15 +8,12 @@ class JavaRequest(BaseModel):
     content: Optional[str] = Field(None, description="Текст вопроса (для TEXT)")
     audio_file: Optional[str] = Field(None, description="Имя файла (для AUDIO)")
 
-
 class JavaResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     sessionId: str
     requestType: Literal["TEXT", "AUDIO", "ERROR"]
     content: str
     audio_response: Optional[str] = None
-
-    class Config:
-        exclude_none = True
 
     @classmethod
     def make_text_response(cls, session_id: str, answer: str) -> "JavaResponse":

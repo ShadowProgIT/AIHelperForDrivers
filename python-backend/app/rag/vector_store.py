@@ -1,39 +1,106 @@
-# app/rag/vector_store.py
 import os
-import warnings
+import re
+import math
+import logging
+from typing import List, Tuple
 from dotenv import load_dotenv
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
-# from rank_bm25 import BM25Okapi
-import re
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-warnings.filterwarnings("ignore", message="Failed to send telemetry event")
+logger = logging.getLogger(__name__)
 load_dotenv()
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 PDD_DIR = os.path.join(PROJECT_ROOT, "data", "pdd")
 CHROMA_PATH = os.path.join(PROJECT_ROOT, "chroma_db")
 
-# Глобальные переменные для BM25
-bm25_index = None
-bm25_documents = []
+
+# ==========================================================
+# 1. УМНЫЙ ЧАНКИНГ С ФАЛЛБЭКОМ
+# ==========================================================
+def split_documents_smart(documents: List[Document], chunk_size: int = 1100, chunk_overlap: int = 150) -> List[
+    Document]:
+    """
+    Пробует разбить по пунктам ПДД. Если структура не найдена или слишком бедная —
+    автоматически использует стандартный RecursiveCharacterTextSplitter.
+    """
+    chunked_docs = []
+    # Паттерн ищем в начале строк или после переносов: "1.1. ", "12.45. ", "Приложение 2. "
+    pdd_pattern = re.compile(r'(?:(?<=\n)|^)(\d{1,2}\.\d{1,2}\.\s|Приложение\s+\d+\.)')
+
+    for doc in documents:
+        text = doc.page_content.strip()
+        if not text:
+            continue
+
+        # Проверяем, есть ли в тексте достаточно пунктов для логического разбиения
+        matches = list(pdd_pattern.finditer(text))
+        is_pdd_formatted = len(matches) >= 3  # Если нашли 3+ пункта, считаем структуру валидной
+
+        if is_pdd_formatted:
+            # === ЛОГИЧЕСКИЙ ЧАНКИНГ ===
+            segments = []
+            start_idx = 0
+            for match in matches:
+                if start_idx < match.start():
+                    segments.append(text[start_idx:match.start()].strip())
+                start_idx = match.start()
+            segments.append(text[start_idx:].strip())  # Последний сегмент
+
+            current_chunk = ""
+            current_meta = doc.metadata.copy()
+
+            for seg in segments:
+                if not seg:
+                    continue
+
+                # Вытаскиваем номер пункта в метаданные
+                p_num_match = pdd_pattern.search(seg)
+                if p_num_match:
+                    current_meta["paragraph"] = p_num_match.group(1).strip()
+
+                if len(current_chunk) + len(seg) > chunk_size and current_chunk:
+                    chunked_docs.append(Document(page_content=current_chunk, metadata=current_meta.copy()))
+                    current_chunk = seg
+                else:
+                    current_chunk += ("\n" if current_chunk else "") + seg
+
+            if current_chunk:
+                chunked_docs.append(Document(page_content=current_chunk, metadata=current_meta.copy()))
+
+        else:
+            # === СТАНДАРТНЫЙ ФАЛЛБЭК ===
+            logger.warning(
+                f"📄 {doc.metadata.get('source', 'Unknown')} не содержит явной структуры ПДД. Используется стандартный чанкинг.")
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                separators=["\n\n", "\n", " ", ""]
+            )
+            chunked_docs.extend(splitter.split_documents([doc]))
+
+    logger.info(f"✅ Умный чанкинг завершён. Всего фрагментов: {len(chunked_docs)}")
+    return chunked_docs
 
 
-def get_vectorstore():
-    """Создаёт или загружает векторное хранилище"""
+# ==========================================================
+# 2. ВЕКТОРНОЕ ХРАНИЛИЩЕ
+# ==========================================================
+def get_vectorstore() -> Chroma:
     embeddings = OllamaEmbeddings(
         model="nomic-embed-text",
         base_url=os.getenv("OLLAMA_URL", "http://localhost:11434")
     )
 
     if os.path.exists(CHROMA_PATH):
+        logger.info("📂 Загружаем существующую векторную базу...")
         return Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
 
-    print(f"Создание векторной базы...")
+    logger.info("🛠️ Создание новой векторной базы...")
     documents = []
-
     if not os.path.exists(PDD_DIR):
         raise FileNotFoundError(f"Папка {PDD_DIR} не найдена!")
 
@@ -42,98 +109,76 @@ def get_vectorstore():
         if filename.endswith(".pdf"):
             documents.extend(PyPDFLoader(file_path).load())
         elif filename.endswith(".txt"):
-            from langchain_community.document_loaders import TextLoader
             documents.extend(TextLoader(file_path, encoding='utf-8').load())
 
     if not documents:
         raise ValueError("Документы не найдены")
 
-    # Увеличиваем чанки до 1500 символов, чтобы захватывать целые пункты
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1500,
-        chunk_overlap=0,
-        separators=["\n\n"]
-    )
+    chunks = split_documents_smart(documents)
+    logger.info(f"📦 Индексируем {len(chunks)} чанков в Chroma...")
+
+    return Chroma.from_documents(documents=chunks, embedding_function=embeddings, persist_directory=CHROMA_PATH)
 
 
-    chunks = text_splitter.split_documents(documents)
+# ==========================================================
+# 3. ДЕДУПЛИКАЦИЯ
+# ==========================================================
+def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
+    dot = sum(a * b for a, b in zip(vec1, vec2))
+    norm1 = math.sqrt(sum(a * a for a in vec1))
+    norm2 = math.sqrt(sum(b * b for b in vec2))
+    return dot / (norm1 * norm2) if norm1 and norm2 else 0.0
 
-    print(f"Создано {len(chunks)} чанков")
 
-    return Chroma.from_documents(documents=chunks, embedding=embeddings, persist_directory=CHROMA_PATH)
+def deduplicate_documents(
+        docs_with_scores: List[Tuple[Document, float]],
+        embeddings_model,
+        threshold: float = 0.92
+) -> List[Tuple[Document, float]]:
+    """Убирает семантически дублирующиеся чанки, оставляя самый релевантный."""
+    if not docs_with_scores:
+        return []
+
+    unique_docs = []
+    unique_embeddings = []
+
+    for doc, score in docs_with_scores:
+        doc_emb = embeddings_model.embed_query(doc.page_content)
+        is_duplicate = False
+        for existing_emb in unique_embeddings:
+            if cosine_similarity(doc_emb, existing_emb) > threshold:
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            unique_docs.append((doc, score))
+            unique_embeddings.append(doc_emb)
+
+    logger.debug(f"🔍 Дедупликация: {len(docs_with_scores)} → {len(unique_docs)} уникальных")
+    return unique_docs
 
 
-def _build_bm25_index():
-    """Строит BM25 индекс для текстового поиска"""
-    global bm25_index, bm25_documents
-
-    if bm25_index is not None:
-        return bm25_index
-
-    print("Построение BM25 индекса...")
+# ==========================================================
+# 4. ПОИСК (EMBEDDING RETRIEVER + DE-DUP)
+# ==========================================================
+def search_pdd(query: str, k: int = 5) -> Tuple[str, List[str]]:
     vectorstore = get_vectorstore()
+    embeddings = vectorstore._embedding_function
 
-    # Получаем все документы
-    all_docs = vectorstore.get()
-    bm25_documents = all_docs.get('documents', [])
+    # 1. Берём с запасом (k*2) для последующей дедупликации
+    docs_with_scores = vectorstore.similarity_search_with_score(query, k=k * 2)
 
-    # Токенизируем для BM25 (простая токенизация по словам)
-    tokenized_docs = [doc.split() for doc in bm25_documents]
-    # bm25_index = BM25Okapi(tokenized_docs)
+    # 2. Дедупликация
+    unique_docs = deduplicate_documents(docs_with_scores, embeddings, threshold=0.92)
 
-    print(f"BM25 индекс построен ({len(bm25_documents)} документов)")
-    return bm25_index
+    # 3. Берём топ-k
+    final_docs = [doc for doc, _ in unique_docs[:k]]
 
-
-def search_pdd(query: str, k: int = 10):
-    """
-    Гибридный поиск: комбинация векторного (semantic) и BM25 (keyword) поиска
-    """
-    vectorstore = get_vectorstore()
-
-    # 1. Векторный поиск (по смыслу)
-    vector_retriever = vectorstore.as_retriever(search_kwargs={"k": k})
-    vector_docs = vector_retriever.invoke(query)
-
-    # 2. BM25 поиск (по ключевым словам)
-    try:
-        _build_bm25_index()
-        query_tokens = query.split()
-        bm25_scores = bm25_index.get_scores(query_tokens)
-
-        # Берём топ-5 по BM25
-        top_bm25_indices = bm25_scores.argsort()[-5:][::-1]
-        bm25_docs = [bm25_documents[i] for i in top_bm25_indices if i < len(bm25_documents)]
-    except Exception as e:
-        print(f"BM25 поиск не сработал: {e}")
-        bm25_docs = []
-
-    # 3. Объединяем результаты (векторные + BM25)
-    all_docs = vector_docs.copy()
-
-    # Добавляем BM25 документы, которых нет в векторных
-    bm25_texts = set(bm25_docs)
-    for doc_text in bm25_docs:
-        if doc_text not in [d.page_content for d in all_docs]:
-            # Создаём фейковый Document
-            from langchain_core.documents import Document
-            all_docs.append(Document(page_content=doc_text))
-
-    # 4. Берём топ-k по количеству
-    all_docs = all_docs[:k]
-
-    if not all_docs:
-        print("Ничего не найдено!")
+    if not final_docs:
         return "Контекст не найден.", []
 
-    # Формируем контекст и источники
-    context = "\n\n===\n\n".join([d.page_content for d in all_docs])
-    sources = list(set([d.metadata.get('source', 'Unknown') for d in all_docs]))
+    # 4. Формируем ответ
+    context = "\n===\n".join([d.page_content for d in final_docs])
+    sources = list(set([d.metadata.get('source', 'ПДД_РФ') for d in final_docs]))
 
-    print(f"Найдено {len(all_docs)} релевантных фрагментов")
-    print(f"Источники: {sources}")
-
-    # Для отладки: показываем первые 200 символов контекста
-    print(f"Контекст (начало): {context[:200]}...")
-
+    logger.info(f"🔎 Найдено {len(final_docs)} фрагментов | Источники: {sources}")
     return context, sources
