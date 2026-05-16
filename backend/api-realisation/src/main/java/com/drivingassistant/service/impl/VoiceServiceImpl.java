@@ -1,10 +1,12 @@
 package com.drivingassistant.service.impl;
 
 import com.drivingassistant.service.contract.VoiceService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import javax.annotation.PostConstruct;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,17 +17,31 @@ import java.util.UUID;
 @Service
 public class VoiceServiceImpl implements VoiceService {
 
-    private final Path inputDir = Paths.get("data/voice-input");
-    private final Path outputDir = Paths.get("data/voice-output");
+    private final String inputDirStr;
+    private final String outputDirStr;
 
-    public VoiceServiceImpl() throws IOException {
-        Files.createDirectories(inputDir, outputDir);
+    // Поля инициализируются в @PostConstruct, а не в конструкторе
+    private Path inputDir;
+    private Path outputDir;
+
+    public VoiceServiceImpl(
+            @Value("${voice.input-dir:audio_input}") String inputDirStr,
+            @Value("${voice.output-dir:audio_output}") String outputDirStr) {
+        this.inputDirStr = inputDirStr;
+        this.outputDirStr = outputDirStr;
+    }
+
+    @PostConstruct
+    public void init() throws IOException {
+        this.inputDir = Paths.get(inputDirStr).toAbsolutePath().normalize();
+        this.outputDir = Paths.get(outputDirStr).toAbsolutePath().normalize();
+
+        Files.createDirectories(this.inputDir);
     }
 
     @Override
     public String saveInput(MultipartFile file) throws IOException {
         String taskId = UUID.randomUUID().toString();
-        // Сохраняем байты как .wav (внешний сервис читает по заголовкам)
         file.transferTo(inputDir.resolve(taskId + ".wav"));
         return taskId;
     }

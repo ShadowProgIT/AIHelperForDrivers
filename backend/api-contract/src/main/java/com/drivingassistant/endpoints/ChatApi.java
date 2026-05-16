@@ -26,7 +26,7 @@ public interface ChatApi {
 
     @Operation(
             summary = "Отправить сообщение в чат с ИИ‑ассистентом",
-            description = "Отправляет запрос пользователя к ИИ (теория или практика) и возвращает ответ.",
+            description = "Отправляет запрос пользователя к ИИ и возвращает ответ.",
             security = @SecurityRequirement(name = AiHelperContractConfig.SECURITY_SCHEME_BEARER)
     )
     @ApiResponse(

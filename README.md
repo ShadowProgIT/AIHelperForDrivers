@@ -1,7 +1,7 @@
 # Контракт. От Java к Python
 {
     "sessionId": "session ID",
-    "requestMode": "TEXT/AUDIO",
+    "requestType": "TEXT/AUDIO",
     "content": "текст_запроса_пользователя", 
     "audio_file": "название_файла"
 } 
@@ -15,6 +15,10 @@ json
   "content": "string",
   "image_url": "string | null"
 }
+
+# Названия директорий
+Для java: input-dir;
+Для python: output-dir;
 
 # Контракт. Префикс для хранения java-сессий в Redis
 backend:session
@@ -34,7 +38,7 @@ ollama create qwen3.5-driving -f /Modelfile (уже в bash-е внутри ол
 
 ollama list (проверка наличия модели qwen в ollama)
 
-Порты:
+# Порты:
 Redis - 6379
 Python - 8000
 
@@ -44,8 +48,6 @@ Python - 8000
 
 
 
-# Продумать.
-1. В Redis сессии удаляются по TTL, но они остаются в postgreSQL. Продумать удаление и из postgres
 
 
 # Redis и работа с Java

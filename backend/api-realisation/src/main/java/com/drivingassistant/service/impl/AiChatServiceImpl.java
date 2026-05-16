@@ -10,15 +10,14 @@ import com.drivingassistant.exceptions.SessionExpiredException;
 import com.drivingassistant.repository.MessageRepository;
 import com.drivingassistant.service.contract.AiChatService;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
-
+import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -31,8 +30,7 @@ public class AiChatServiceImpl implements AiChatService {
     public AiChatServiceImpl(
             @Qualifier("aiWebClient") WebClient aiWebClient,
             SessionManager sessionManager,
-            MessageRepository messageRepository
-    ) {
+            MessageRepository messageRepository) {
         this.aiWebClient = aiWebClient;
         this.sessionManager = sessionManager;
         this.messageRepository = messageRepository;
@@ -47,70 +45,64 @@ public class AiChatServiceImpl implements AiChatService {
             sessionManager.touchSession(sessionId);
         }
 
-        // Только THEORY, т.к. изображений нет
-        RequestMode mode = RequestMode.THEORY;
+        final String finalSessionId = sessionId;
 
-        // Сохраняем сообщение пользователя (с поддержкой audioFile)
-        Message userMessage = new Message(sessionId, SenderType.USER, request.content(), request.audioFile());
-        messageRepository.save(userMessage);
+        // 1. Сохраняем сообщение пользователя в БД
+        // Если голосовое, подставляем плейсхолдер, чтобы не нарушать nullable=false в entity
+        String userContent = request.content() != null ? request.content() : "🎙️ Голосовое сообщение";
+        messageRepository.save(new Message(finalSessionId, SenderType.USER, userContent, request.audioFile()));
 
-        // === Если это голосовое — запускаем асинхронную обработку ===
-        if (request.audioFile() != null && !request.audioFile().isBlank()) {
-            CompletableFuture.runAsync(() -> processVoiceAsync(sessionId, request.audioFile()));
-            return new ChatResponseDto(sessionId, mode, "🎙️ Обработка...", "processing:" + request.audioFile());
+        // 2. Ветвление по типу запроса
+        if ("AUDIO".equalsIgnoreCase(request.requestType())) {
+            // Запускаем фоновую обработку и сразу возвращаем PENDING
+            CompletableFuture.runAsync(() -> processVoiceAsync(finalSessionId, request.audioFile()));
+            return new ChatResponseDto(finalSessionId, RequestMode.THEORY, "🎙️ Обработка голосового запроса...", null);
         }
 
-        // === Обычный текстовый запрос ===
-        Map<String, Object> pythonPayload = Map.of(
-                "sessionId", sessionId,
-                "content", request.content(),
-                "mode", mode.name(),
-                "audio_file", request.audioFile()
-        );
-
-        ChatResponseDto aiResponse = aiWebClient.post()
-                .uri("/predict")
-                .bodyValue(pythonPayload)
-                .retrieve()
-                .bodyToMono(ChatResponseDto.class)
-                .block();
-
-        if (aiResponse == null) {
-            aiResponse = new ChatResponseDto(sessionId, mode, "Ошибка ИИ-сервиса", null);
-        }
-
-        // Сохраняем ответ (с поддержкой audioResponse)
-        Message aiMessage = new Message(sessionId, SenderType.AI, aiResponse.content(), aiResponse.audioResponse());
-        messageRepository.save(aiMessage);
-
-        return new ChatResponseDto(sessionId, mode, aiResponse.content(), aiResponse.audioResponse());
+        // 3. Синхронная обработка текста
+        ChatResponseDto aiResponse = callAi(finalSessionId, "TEXT", request.content(), null);
+        messageRepository.save(new Message(finalSessionId, SenderType.AI, aiResponse.content(), aiResponse.audioResponse()));
+        return aiResponse;
     }
 
+    /** Асинхронный вызов для голоса (выполняется в отдельном потоке) */
     private void processVoiceAsync(String sessionId, String audioFile) {
         try {
-            ChatResponseDto resp = aiWebClient.post()
-                    .uri("/predict_voice")
-                    .bodyValue(Map.of("sessionId", sessionId, "audio_file", audioFile))
-                    .retrieve()
-                    .bodyToMono(ChatResponseDto.class)
-                    .block();
-
-            if (resp != null && resp.audioResponse() != null) {
-                Message aiVoice = new Message(sessionId, SenderType.AI,
-                        resp.content() != null ? resp.content() : "🎧 Ответ",
-                        resp.audioResponse());
-                messageRepository.save(aiVoice);
+            ChatResponseDto resp = callAi(sessionId, "AUDIO", null, audioFile);
+            if (resp != null) {
+                String content = resp.content() != null ? resp.content() : "🎧 Голосовой ответ от ИИ";
+                messageRepository.save(new Message(sessionId, SenderType.AI, content, resp.audioResponse()));
             }
         } catch (Exception e) {
-            System.err.println("Ошибка обработки голоса: " + e.getMessage());
+            System.err.println("❌ Ошибка асинхронной обработки голоса: " + e.getMessage());
+            // В случае ошибки можно сохранить сообщение-заглушку, чтобы фронт не висел
+            messageRepository.save(new Message(sessionId, SenderType.AI, "⚠️ Ошибка обработки аудио", null));
         }
+    }
+
+    /** Универсальный вызов Python. Собирает JSON строго по флагу */
+    private ChatResponseDto callAi(String sessionId, String requestType, String content, String audioFile) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("sessionId", sessionId);
+        payload.put("requestType", requestType);
+        // Добавляем поля ТОЛЬКО если они не null
+        if (content != null) payload.put("content", content);
+        if (audioFile != null) payload.put("audio_file", audioFile);
+        payload.put("requestMode", RequestMode.THEORY.name());
+
+        return aiWebClient.post()
+                .uri("/predict") // Python сам разбирает requestType
+                .bodyValue(payload)
+                .retrieve()
+                .bodyToMono(ChatResponseDto.class)
+                .block(Duration.ofSeconds(15));
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ChatMessageDto> getChatHistory(String sessionId) {
         if (!sessionManager.isValidSession(sessionId)) {
-            throw new SessionExpiredException("Сессия не найдена");
+            throw new SessionExpiredException("Сессия не найдена или истекла");
         }
         return messageRepository.findBySessionIdOrderByTimestampAsc(sessionId).stream()
                 .map(m -> new ChatMessageDto(
@@ -118,9 +110,9 @@ public class AiChatServiceImpl implements AiChatService {
                         m.getSessionId(),
                         m.getSender(),
                         m.getContent(),
-                        m.getAudioFile(),  // ← передаём аудиофайл
+                        m.getAudioFile(),
                         m.getTimestamp()
                 ))
-                .collect(Collectors.toList());
+                .toList();
     }
 }

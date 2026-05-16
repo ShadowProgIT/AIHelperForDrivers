@@ -7,6 +7,7 @@ import com.drivingassistant.endpoints.ChatApi;
 import com.drivingassistant.service.contract.AiChatService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -14,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/chat")
+
 public class ChatApiController implements ChatApi {
 
     private final AiChatService chatService;
@@ -33,7 +34,7 @@ public class ChatApiController implements ChatApi {
 
     @Override
     public ResponseEntity<List<ChatMessageDto>> getChatHistory(
-            @org.springframework.web.bind.annotation.PathVariable String sessionId
+            @PathVariable String sessionId
     ) {
         List<ChatMessageDto> history = chatService.getChatHistory(sessionId);
         return ResponseEntity.ok(history);
