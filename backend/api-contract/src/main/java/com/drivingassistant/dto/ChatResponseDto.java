@@ -13,9 +13,6 @@ public record ChatResponseDto(
         @Schema(description = "Идентификатор сессии, к которой относится ответ", requiredMode = Schema.RequiredMode.REQUIRED)
         @JsonProperty("sessionId") String sessionId,
 
-        @Schema(description = "Режим обработки", allowableValues = {"THEORY", "PRACTICE"}, requiredMode = Schema.RequiredMode.REQUIRED)
-        @JsonProperty("requestMode") RequestMode requestMode,
-
         @Schema(description = "Текстовый ответ от ИИ-модели", requiredMode = Schema.RequiredMode.REQUIRED)
         @JsonProperty("content") String content,
 

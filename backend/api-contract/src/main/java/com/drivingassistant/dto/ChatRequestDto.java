@@ -1,5 +1,6 @@
 package com.drivingassistant.dto;
 
+import com.drivingassistant.enums.AiModelType;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -17,5 +18,8 @@ public record ChatRequestDto(
         @JsonProperty("content") String content,
 
         @Schema(description = "Имя аудиофайла (только для AUDIO)")
-        @JsonProperty("audio_file") String audioFile
+        @JsonProperty("audio_file") String audioFile,
+
+        @Schema(description = "Тип ИИ-модели: LOCAL или GIGACHAT", allowableValues = {"LOCAL", "GIGACHAT"})
+        @JsonProperty("modelType") AiModelType modelType
 ) {}

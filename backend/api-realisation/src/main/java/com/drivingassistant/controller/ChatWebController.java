@@ -2,6 +2,7 @@ package com.drivingassistant.controller;
 
 import com.drivingassistant.dto.ChatRequestDto;
 import com.drivingassistant.dto.ChatMessageDto;
+import com.drivingassistant.enums.AiModelType;
 import com.drivingassistant.service.contract.AiChatService;
 import com.drivingassistant.service.contract.VoiceService;
 import org.springframework.stereotype.Controller;
@@ -29,8 +30,9 @@ public class ChatWebController {
                 ? chatService.getChatHistory(sessionId) : List.of();
         model.addAttribute("messages", messages);
         model.addAttribute("sessionId", sessionId);
-        // Инициализируем форму с флагом по умолчанию
-        model.addAttribute("request", new ChatRequestDto(sessionId, "TEXT", "", null));
+
+        model.addAttribute("request", new ChatRequestDto(sessionId, "TEXT", "", null, AiModelType.LOCAL));
+
         return "chat";
     }
 

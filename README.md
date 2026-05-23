@@ -1,20 +1,20 @@
 # Контракт. От Java к Python
 {
     "sessionId": "session ID",
-    "requestType": "TEXT/AUDIO",
+    "requestType": "TEXT" | "AUDIO",
     "content": "текст_запроса_пользователя", 
-    "audio_file": "название_файла"
+    "audio_file": "название_файла",
+    "modelType": "LOCAL" | "GLOBAL"
 } 
-# Примечание. Если присутствует флаг TEXT - ключа audio_file не будет. Если есть флаг AUDIO - ключа content не будет.
 
 # Контракт. От Python к Java
-json
 {
   "sessionId": "string",
-  "requestMode": "theory" | "practice",
   "content": "string",
-  "image_url": "string | null"
+  "audio_response": "string | null"
 }
+
+# Примечание. Если присутствует флаг TEXT - ключа audio_file не будет. Если есть флаг AUDIO - ключа content не будет.
 
 # Названия директорий
 Для java: input-dir;

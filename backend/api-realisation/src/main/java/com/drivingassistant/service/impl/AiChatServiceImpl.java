@@ -4,7 +4,7 @@ import com.drivingassistant.dto.ChatMessageDto;
 import com.drivingassistant.dto.ChatRequestDto;
 import com.drivingassistant.dto.ChatResponseDto;
 import com.drivingassistant.entity.Message;
-import com.drivingassistant.enums.RequestMode;
+import com.drivingassistant.enums.AiModelType;
 import com.drivingassistant.enums.SenderType;
 import com.drivingassistant.exceptions.SessionExpiredException;
 import com.drivingassistant.repository.MessageRepository;
@@ -44,54 +44,49 @@ public class AiChatServiceImpl implements AiChatService {
         } else {
             sessionManager.touchSession(sessionId);
         }
-
         final String finalSessionId = sessionId;
 
-        // 1. Сохраняем сообщение пользователя в БД
-        // Если голосовое, подставляем плейсхолдер, чтобы не нарушать nullable=false в entity
+        // Если фронт не передал модель, по умолчанию используем локальную
+        AiModelType modelType = request.modelType() != null ? request.modelType() : AiModelType.LOCAL;
+
         String userContent = request.content() != null ? request.content() : "🎙️ Голосовое сообщение";
         messageRepository.save(new Message(finalSessionId, SenderType.USER, userContent, request.audioFile()));
 
-        // 2. Ветвление по типу запроса
         if ("AUDIO".equalsIgnoreCase(request.requestType())) {
-            // Запускаем фоновую обработку и сразу возвращаем PENDING
-            CompletableFuture.runAsync(() -> processVoiceAsync(finalSessionId, request.audioFile()));
-            return new ChatResponseDto(finalSessionId, RequestMode.THEORY, "🎙️ Обработка голосового запроса...", null);
+            CompletableFuture.runAsync(() -> processVoiceAsync(finalSessionId, request.audioFile(), modelType));
+            return new ChatResponseDto(finalSessionId, "🎙️ Обработка голосового запроса...", null);
         }
 
-        // 3. Синхронная обработка текста
-        ChatResponseDto aiResponse = callAi(finalSessionId, "TEXT", request.content(), null);
+        ChatResponseDto aiResponse = callAi(finalSessionId, "TEXT", request.content(), null, modelType);
         messageRepository.save(new Message(finalSessionId, SenderType.AI, aiResponse.content(), aiResponse.audioResponse()));
         return aiResponse;
     }
 
-    /** Асинхронный вызов для голоса (выполняется в отдельном потоке) */
-    private void processVoiceAsync(String sessionId, String audioFile) {
+    /** Асинхронный вызов для голоса */
+    private void processVoiceAsync(String sessionId, String audioFile, AiModelType modelType) {
         try {
-            ChatResponseDto resp = callAi(sessionId, "AUDIO", null, audioFile);
+            ChatResponseDto resp = callAi(sessionId, "AUDIO", null, audioFile, modelType);
             if (resp != null) {
                 String content = resp.content() != null ? resp.content() : "🎧 Голосовой ответ от ИИ";
                 messageRepository.save(new Message(sessionId, SenderType.AI, content, resp.audioResponse()));
             }
         } catch (Exception e) {
             System.err.println("❌ Ошибка асинхронной обработки голоса: " + e.getMessage());
-            // В случае ошибки можно сохранить сообщение-заглушку, чтобы фронт не висел
             messageRepository.save(new Message(sessionId, SenderType.AI, "⚠️ Ошибка обработки аудио", null));
         }
     }
 
-    /** Универсальный вызов Python. Собирает JSON строго по флагу */
-    private ChatResponseDto callAi(String sessionId, String requestType, String content, String audioFile) {
+    /** Универсальный вызов Python */
+    private ChatResponseDto callAi(String sessionId, String requestType, String content, String audioFile, AiModelType modelType) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("sessionId", sessionId);
         payload.put("requestType", requestType);
-        // Добавляем поля ТОЛЬКО если они не null
         if (content != null) payload.put("content", content);
         if (audioFile != null) payload.put("audio_file", audioFile);
-        payload.put("requestMode", RequestMode.THEORY.name());
+        payload.put("modelType", modelType.getValue());
 
         return aiWebClient.post()
-                .uri("/predict") // Python сам разбирает requestType
+                .uri("/predict")
                 .bodyValue(payload)
                 .retrieve()
                 .bodyToMono(ChatResponseDto.class)
