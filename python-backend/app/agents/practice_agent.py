@@ -8,6 +8,8 @@ from app.utils.redis_client import redis_memory
 from app.utils.llm_client import get_llm
 from app.rag.vector_store import search_pdd
 from app.utils.salute_client import salute_client
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
 
 logger = logging.getLogger(__name__)
 
@@ -63,14 +65,34 @@ def _generate_audio(text: str, output_dir: str) -> Optional[str]:
         return None
 
 
+# === ЦЕПОЧКА 2: VOICE CHAIN (для AUDIO режима) ===
+# Явное использование LangChain LLMChain для соответствия требованию "2 цепочки"
+VOICE_PROMPT = PromptTemplate.from_template(
+    """Ты — голосовой ассистент водителя.
+Отвечай ОЧЕНЬ КРАТКО (1 короткое предложение). Начинай с действия.
+Не цитируй пункты ПДД вслух.
+КОНТЕКСТ ДИАЛОГА: {context_summary}
+ИНФОРМАЦИЯ ИЗ ПДД: {rag_context}
+СИТУАЦИЯ: {question}
+ОТВЕТ:"""
+)
+
+
 def process_practice_request(
         question: str,
         session_id: str,
-        output_dir: str = "output"
+        provider: str = "local",  # <-- НОВЫЙ ПАРАМЕТР для переключения моделей
+        output_dir: str = "audio_output"
 ) -> Dict[str, Optional[str]]:
+    """
+    Основная логика Practice Agent.
+
+    Реализует требование: "Использование 2-х цепочек LangChain".
+    Цепочка 2 (здесь): VOICE_PROMPT | LLMChain для генерации голосового ответа.
+    """
     logger.info(f"🎙️ Practice Request | Session: {session_id} | Q: '{question[:50]}...'")
 
-    # 1. Экстренный ответ (без LLM)
+    # 1. Экстренный ответ (без LLM, мгновенно)
     if is_safety_critical(question):
         emergency_text = get_emergency_response(question)
         audio_filename = _generate_audio(emergency_text, output_dir)
@@ -90,25 +112,31 @@ def process_practice_request(
     except Exception as e:
         logger.error(f"RAG Error: {e}")
 
-    # 4. Промпт для голоса (✅ ИСПРАВЛЕНО: добавлен rag_context)
-    system_prompt = f"""Ты — голосовой ассистент водителя.
-Отвечай ОЧЕНЬ КРАТКО (1 короткое предложение). Начинай с действия.
-Не цитируй пункты ПДД вслух.
-КОНТЕКСТ ДИАЛОГА: {context_summary}
-ИНФОРМАЦИЯ ИЗ ПДД: {rag_context}
-СИТУАЦИЯ: {question}
-ОТВЕТ:"""
+    # 4. Инициализация LLM через фабрику (поддержка local/global)
+    llm = get_llm(provider)
 
-    # 5. Генерация ответа
-    final_answer = "Система недоступна. Будьте внимательны."
+    # 5. Создаем и запускаем ЦЕПОЧКУ 2 (Voice Chain) — явное использование LangChain
+    voice_chain = LLMChain(llm=llm, prompt=VOICE_PROMPT)
+
     try:
-        llm = get_llm()
-        raw_answer = llm.invoke(system_prompt)
+        # invoke возвращает dict {'text': '...'}
+        result = voice_chain.invoke({
+            "context_summary": context_summary,
+            "rag_context": rag_context,
+            "question": question
+        })
+        raw_answer = result['text']
         final_answer = clean_voice_response(raw_answer)
-    except Exception as e:
-        logger.error(f"LLM Error: {e}")
 
-    # 6. 🔥 СИНТЕЗ РЕЧИ (TTS)
+        # 6. Обновление контекста в Redis (внутри логики обработки)
+        new_summary = f"Voice Q: {question[:100]}. A: {final_answer}"
+        redis_memory.save_summary(session_id, new_summary)
+
+    except Exception as e:
+        logger.error(f"Voice Chain Error: {e}")
+        final_answer = "Система недоступна."
+
+    # 7. 🔥 СИНТЕЗ РЕЧИ (TTS)
     audio_filename = _generate_audio(final_answer, output_dir)
 
     return {"answer": final_answer, "audio_filename": audio_filename}

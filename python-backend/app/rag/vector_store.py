@@ -13,10 +13,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 logger = logging.getLogger(__name__)
 load_dotenv()
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PDD_DIR = os.path.join(PROJECT_ROOT, "data", "pdd")
 CHROMA_PATH = os.path.join(PROJECT_ROOT, "chroma_db")
 
+logger.info(f"📂 PROJECT_ROOT: {PROJECT_ROOT}")
+logger.info(f"📂 PDD_DIR: {PDD_DIR}")
+logger.info(f"📂 CHROMA_PATH: {CHROMA_PATH}")
 
 # ==========================================================
 # 1. УМНЫЙ ЧАНКИНГ С ФАЛЛБЭКОМ

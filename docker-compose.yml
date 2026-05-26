@@ -35,7 +35,9 @@ services:
       - "8000:8000"  
     volumes:
       - ./python-backend:/app
-      - ./data:/app/data
+      - ./audio_input:/app/audio_input            
+      - ./audio_output:/app/audio_output
+      # - ./data:/app/data
     environment:
       - OLLAMA_URL=http://ollama-server:11434  
       - REDIS_HOST=redis-cache                  

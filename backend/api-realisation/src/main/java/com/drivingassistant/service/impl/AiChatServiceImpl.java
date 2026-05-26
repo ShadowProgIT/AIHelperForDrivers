@@ -90,7 +90,7 @@ public class AiChatServiceImpl implements AiChatService {
                 .bodyValue(payload)
                 .retrieve()
                 .bodyToMono(ChatResponseDto.class)
-                .block(Duration.ofSeconds(15));
+                .block(Duration.ofSeconds(10000));
     }
 
     @Override
