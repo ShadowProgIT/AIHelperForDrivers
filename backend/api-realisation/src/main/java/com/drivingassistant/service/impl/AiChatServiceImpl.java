@@ -77,20 +77,33 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     /** Универсальный вызов Python */
-    private ChatResponseDto callAi(String sessionId, String requestType, String content, String audioFile, AiModelType modelType) {
+    private ChatResponseDto callAi(
+            String sessionId,
+            String requestType,
+            String content,
+            String audioFile,      // ← имя файла БЕЗ пути, например "abc123.wav"
+            AiModelType modelType) {
+
         Map<String, Object> payload = new HashMap<>();
         payload.put("sessionId", sessionId);
         payload.put("requestType", requestType);
-        if (content != null) payload.put("content", content);
-        if (audioFile != null) payload.put("audio_file", audioFile);
         payload.put("modelType", modelType.getValue());
+
+        // Добавляем поля ТОЛЬКО если они не null
+        if (content != null) {
+            payload.put("content", content);
+        }
+        if (audioFile != null && !audioFile.isBlank()) {
+            // Python ожидает именно имя файла, а не полный путь!
+            payload.put("audio_file", audioFile);
+        }
 
         return aiWebClient.post()
                 .uri("/predict")
                 .bodyValue(payload)
                 .retrieve()
                 .bodyToMono(ChatResponseDto.class)
-                .block(Duration.ofSeconds(15));
+                .block(Duration.ofSeconds(15));  // таймаут настраивается в application.properties
     }
 
     @Override

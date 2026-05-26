@@ -8,25 +8,17 @@ import org.springframework.web.reactive.function.client.WebClient;
 @Configuration
 public class WebClientConfig {
 
-    private final String aiServiceUrl;
-    private final int timeout;
-
-    public WebClientConfig(
-            @Value("${ai.service.url:http://localhost:8000}") String aiServiceUrl,
-            @Value("${ai.service.timeout:15000}") int timeout
-    ) {
-        this.aiServiceUrl = aiServiceUrl;
-        this.timeout = timeout;
-    }
-
     @Bean
-    public WebClient aiWebClient(WebClient.Builder builder) {
+    public WebClient aiWebClient(
+            WebClient.Builder builder,
+            @Value("${ai.service.url:http://localhost:8000}") String aiServiceUrl,
+            @Value("${ai.service.timeout:15000}") int timeout) {
+
         return builder
                 .baseUrl(aiServiceUrl)
                 .defaultHeader("Content-Type", "application/json")
                 .codecs(configurer ->
-                        configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024)
-                )
+                        configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
                 .build();
     }
 }

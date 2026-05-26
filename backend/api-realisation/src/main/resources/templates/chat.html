@@ -2,80 +2,171 @@
 <html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Driving Assistant</title>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 700px; margin: 30px auto; padding: 0 15px; background: #f5f7fa; }
-        .chat-box { background: #fff; border: 1px solid #e1e5eb; border-radius: 12px; padding: 15px; height: 450px; overflow-y: auto; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        .msg { margin: 8px 0; padding: 10px 14px; border-radius: 12px; max-width: 75%; line-height: 1.4; }
-        .user { background: #dbeafe; margin-left: auto; border-bottom-right-radius: 2px; }
-        .ai { background: #f3f4f6; margin-right: auto; border-bottom-left-radius: 2px; }
+        :root {
+            --bg-app: #f0f2f5;
+            --bg-user: #dcf8c6;
+            --bg-ai: #ffffff;
+            --border: #e1e5eb;
+            --text-primary: #111827;
+            --text-secondary: #6b7280;
+            --accent: #2563eb;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background: var(--bg-app); color: var(--text-primary); height: 100vh; display: flex; flex-direction: column; }
 
-        /* Обновил controls: добавил flex-wrap для адаптивности */
-        .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #fff; padding: 12px; border-radius: 12px; border: 1px solid #e1e5eb; }
+        /* === ЧАТ === */
+        .chat-container { flex: 1; overflow-y: auto; padding: 16px; scroll-behavior: smooth; }
+        .msg { margin: 6px 0; padding: 10px 14px; border-radius: 12px; max-width: 78%; line-height: 1.45; position: relative; word-wrap: break-word; animation: slideIn 0.3s ease-out; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-        input[type="text"] { flex: 1 1 200px; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; outline: none; }
-        button { padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; transition: 0.2s; }
-        .btn-send { background: #2563eb; color: white; }
+        .msg.user { background: var(--bg-user); margin-left: auto; margin-right: 0; border-bottom-right-radius: 2px; }
+        .msg.ai { background: var(--bg-ai); margin-right: auto; margin-left: 0; border-bottom-left-radius: 2px; }
+
+        .msg strong { font-size: 0.8em; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px; }
+        .meta { font-size: 0.7em; color: var(--text-secondary); margin-top: 4px; text-align: right; }
+        audio { margin-top: 6px; max-width: 100%; border-radius: 8px; }
+
+        /* === LOADING АНИМАЦИЯ (ВОЛНА) === */
+        .msg.loading { background: var(--bg-ai); max-width: 160px; padding: 12px 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .loading-wave { display: flex; align-items: center; gap: 3px; height: 18px; }
+        .loading-wave span { display: block; width: 3px; background: var(--accent); border-radius: 2px; animation: wave 1.1s infinite ease-in-out; }
+        .loading-wave span:nth-child(1) { animation-delay: 0.0s; height: 30%; }
+        .loading-wave span:nth-child(2) { animation-delay: 0.1s; height: 60%; }
+        .loading-wave span:nth-child(3) { animation-delay: 0.2s; height: 90%; }
+        .loading-wave span:nth-child(4) { animation-delay: 0.3s; height: 60%; }
+        .loading-wave span:nth-child(5) { animation-delay: 0.4s; height: 30%; }
+        @keyframes wave { 0%, 100% { transform: scaleY(0.5); opacity: 0.4; } 50% { transform: scaleY(1); opacity: 1; } }
+        .loading-text { font-size: 0.75em; color: var(--text-secondary); }
+
+        /* === УПРАВЛЕНИЕ === */
+        .controls { background: #fff; padding: 12px 16px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+        input[type="text"] { flex: 1 1 200px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 20px; outline: none; font-size: 0.95rem; transition: 0.2s; }
+        input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+
+        button { padding: 10px 16px; border: none; border-radius: 20px; cursor: pointer; font-weight: 500; transition: 0.2s; font-size: 0.95rem; }
+        .btn-send { background: var(--accent); color: white; }
+        .btn-send:hover { background: #1d4ed8; }
         .btn-voice { background: #f59e0b; color: white; }
         .btn-voice.recording { background: #ef4444; animation: pulse 1.5s infinite; }
-        audio { margin-top: 6px; max-width: 100%; }
-        .meta { font-size: 0.75em; color: #6b7280; margin-top: 4px; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
-        /* === НОВЫЕ СТИЛИ ДЛЯ ПЕРЕКЛЮЧАТЕЛЯ МОДЕЛИ === */
-        .model-selector {
-            display: flex; gap: 12px; align-items: center;
-            background: #f8fafc; padding: 8px 12px; border-radius: 8px;
-            border: 1px solid #e2e8f0; font-size: 0.9rem;
-            width: 100%; box-sizing: border-box; order: -1; margin-bottom: 4px;
-        }
+        .model-selector { display: flex; gap: 12px; align-items: center; background: #f8fafc; padding: 8px 12px; border-radius: 20px; border: 1px solid var(--border); font-size: 0.85rem; width: 100%; box-sizing: border-box; order: -1; margin-bottom: 2px; }
         .model-option { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
-        .model-option input { accent-color: #2563eb; cursor: pointer; }
+        .model-option input { accent-color: var(--accent); cursor: pointer; }
+
+        /* Скроллбар */
+        .chat-container::-webkit-scrollbar { width: 6px; }
+        .chat-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
     </style>
 </head>
 <body>
-<h2>💬 Чат с ассистентом</h2>
-
-<div class="chat-box" id="chatBox">
-    <div th:each="msg : ${messages}" class="msg" th:classappend="${msg.sender.name() == 'USER'} ? 'user' : 'ai'">
-        <strong th:text="${msg.sender == 'USER' ? 'Вы' : 'Ассистент'}">Роль</strong>
-        <div th:text="${msg.content}" style="margin-top: 4px;"></div>
+<div class="chat-container" id="chatBox">
+    <!-- История из БД (рендерится сервером при первой загрузке) -->
+    <div th:each="msg : ${messages}" class="msg" th:classappend="${msg.sender.name() == 'USER'} ? 'user' : 'ai'" th:data-id="${msg.id}">
+        <strong th:text="${msg.sender == 'USER' ? 'Вы' : 'Ассистент'}"></strong>
+        <div th:text="${msg.content}"></div>
         <div th:if="${msg.audioFile != null}">
             <audio controls th:src="@{'/chat/audio/' + ${msg.audioFile}}"></audio>
         </div>
         <div class="meta" th:text="${#temporals.format(msg.timestamp, 'HH:mm')}"></div>
     </div>
-    <div id="pendingIndicator" class="msg ai" style="display:none;">🎙️ Генерация голосового ответа...</div>
+    <!-- Новые сообщения добавляются сюда через JS -->
 </div>
 
-<form th:action="@{/chat}" th:object="${request}" method="post" class="controls">
+<form th:action="@{/chat}" th:object="${request}" method="post" class="controls" id="chatForm">
     <input type="hidden" th:field="*{sessionId}" th:value="${sessionId}">
     <input type="hidden" id="requestType" th:field="*{requestType}" value="TEXT">
     <input type="hidden" id="audioFile" th:field="*{audioFile}">
 
-    <!-- ✅ ПЕРЕКЛЮЧАТЕЛЬ МОДЕЛИ -->
     <div class="model-selector">
-        <label class="model-option">
-            <input type="radio" th:field="*{modelType}" value="LOCAL"> 🖥️ Local
-        </label>
-        <label class="model-option">
-            <input type="radio" th:field="*{modelType}" value="GIGACHAT"> ☁️ GigaChat
-        </label>
+        <label class="model-option"><input type="radio" th:field="*{modelType}" value="LOCAL" checked> 🖥️ Local</label>
+        <label class="model-option"><input type="radio" th:field="*{modelType}" value="GIGACHAT"> ☁️ GigaChat</label>
     </div>
 
-    <input type="text" id="textInput" th:field="*{content}" placeholder="Введите вопрос...">
+    <input type="text" id="textInput" th:field="*{content}" placeholder="Введите вопрос..." autocomplete="off">
     <button type="button" id="voiceBtn" class="btn-voice">🎙️</button>
     <button type="submit" class="btn-send">Отправить</button>
 </form>
 
 <script>
     let mediaRecorder, audioChunks = [], isRecording = false;
+    const chatBox = document.getElementById('chatBox');
+    const form = document.getElementById('chatForm');
+    const textInput = document.getElementById('textInput');
     const voiceBtn = document.getElementById('voiceBtn');
     const requestType = document.getElementById('requestType');
-    const audioFile = document.getElementById('audioFile');
-    const textInput = document.getElementById('textInput');
+    const audioFileInput = document.getElementById('audioFile');
 
-    // Переключение режима
+    // Отслеживаем количество сообщений, чтобы не дублировать их при поллинге
+    let lastKnownMsgCount = chatBox.querySelectorAll('.msg').length;
+
+    // 🔹 Динамическое добавление сообщения в DOM
+    function appendMessage(sender, content, audioFile, timestamp) {
+        const div = document.createElement('div');
+        div.className = `msg ${sender === 'USER' ? 'user' : 'ai'}`;
+        const time = timestamp ? new Date(timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+        let html = `<strong>${sender === 'USER' ? 'Вы' : 'Ассистент'}</strong>`;
+        html += `<div>${content}</div>`;
+        if (audioFile) html += `<audio controls src="/chat/audio/${audioFile}"></audio>`;
+        html += `<div class="meta">${time}</div>`;
+
+        div.innerHTML = html;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // 🔹 Лоадер для аудио-запросов
+    function showAudioLoader() {
+        if (document.getElementById('audioLoader')) return;
+        const loader = document.createElement('div');
+        loader.id = 'audioLoader';
+        loader.className = 'msg ai loading';
+        loader.innerHTML = `
+            <div class="loading-wave"><span></span><span></span><span></span><span></span><span></span></div>
+            <span class="loading-text">Анализирую голос...</span>
+        `;
+        chatBox.appendChild(loader);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function hideAudioLoader() {
+        const loader = document.getElementById('audioLoader');
+        if (loader) loader.remove();
+    }
+
+    // 🔹 Интерцепт отправки формы (мгновенный UI без перезагрузки)
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault(); // Останавливаем стандартный redirect
+
+        const type = requestType.value;
+        const content = textInput.value.trim();
+        const audio = audioFileInput.value;
+
+        // 1. Мгновенно показываем сообщение пользователя справа
+        if (type === 'TEXT' && content) {
+            appendMessage('USER', content, null);
+            textInput.value = ''; // Очищаем поле
+        }
+        else if (type === 'AUDIO' && audio) {
+            appendMessage('USER', '🎙️ Голосовое сообщение', audio);
+            showAudioLoader(); // Показываем анимацию обработки
+        }
+
+        // 2. Отправляем данные на бэкенд в фоне
+        try {
+            await fetch(form.action, { method: 'POST', body: new FormData(form) });
+            // Обновляем URL для удобства копирования
+            window.history.replaceState({}, '', `?sessionId=${document.querySelector('[name="sessionId"]').value}`);
+            // Запускаем ожидание ответа ИИ
+            pollHistory();
+        } catch (err) { console.error('Send error:', err); }
+    });
+
+    // 🔹 Запись голоса
     voiceBtn.onclick = async () => {
         if (!isRecording) {
             try {
@@ -89,7 +180,7 @@
                     fd.append('voice', blob, 'voice.wav');
                     const res = await fetch('/chat/upload-voice', { method: 'POST', body: fd });
                     const taskId = await res.text();
-                    audioFile.value = taskId;
+                    audioFileInput.value = taskId;
                     requestType.value = 'AUDIO';
                     textInput.disabled = true;
                     textInput.value = '';
@@ -109,28 +200,41 @@
         }
     };
 
-    // Сброс режима при вводе текста
     textInput.addEventListener('input', () => {
         if (textInput.value.trim()) {
             requestType.value = 'TEXT';
-            audioFile.value = '';
+            audioFileInput.value = '';
             textInput.disabled = false;
             voiceBtn.textContent = '🎙️';
         }
     });
 
-    // Поллинг истории (проверяем каждые 2 сек, появился ли ответ)
-    setInterval(async () => {
+    // 🔹 Поллинг истории (ожидание ответа ИИ)
+    async function pollHistory() {
         const sess = document.querySelector('[name="sessionId"]').value;
         if (!sess) return;
-        const res = await fetch(`/api/chat/${sess}`);
-        if (res.ok) {
-            const msgs = await res.json();
-            const hasPending = msgs.some(m => m.content.includes('Генерация') || m.content.includes('Обработка'));
-            document.getElementById('pendingIndicator').style.display = hasPending ? 'block' : 'none';
-            // В реальном проекте здесь лучше рендерить новые сообщения через JS или перезагружать блок
-        }
-    }, 2000);
+        try {
+            const res = await fetch(`/api/chat/${sess}`);
+            if (res.ok) {
+                const msgs = await res.json();
+                if (msgs.length > lastKnownMsgCount) {
+                    hideAudioLoader(); // Убираем лоадер, как только появились новые сообщения
+
+                    for (let i = lastKnownMsgCount; i < msgs.length; i++) {
+                        const m = msgs[i];
+                        // Пропускаем временные статусные сообщения бэкенда
+                        if (m.sender === 'AI' && (m.content.includes('Обработка') || m.content.includes('Генерация'))) continue;
+
+                        appendMessage('AI', m.content, m.audio_file, m.timestamp);
+                    }
+                    lastKnownMsgCount = msgs.length;
+                }
+            }
+        } catch (e) { console.warn('Polling error', e); }
+    }
+
+    setInterval(pollHistory, 2000);
+    chatBox.scrollTop = chatBox.scrollHeight; // Автоскролл при загрузке
 </script>
 </body>
 </html>
