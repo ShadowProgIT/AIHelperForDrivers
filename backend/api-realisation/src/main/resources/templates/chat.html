@@ -60,13 +60,37 @@
         /* Скроллбар */
         .chat-container::-webkit-scrollbar { width: 6px; }
         .chat-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+        /* === АНИМАЦИЯ "ПЕЧАТАЕТ..." === */
+        .msg.loading-text {
+            background: var(--bg-ai);
+            max-width: 200px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--accent);
+            border-radius: 50%;
+            animation: typingBounce 1.4s infinite ease-in-out;
+        }
+        .typing-dot:nth-child(1) { animation-delay: 0s; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-4px); opacity: 1; }
+        }
     </style>
 </head>
 <body>
 <div class="chat-container" id="chatBox">
     <!-- История из БД (рендерится сервером при первой загрузке) -->
     <div th:each="msg : ${messages}" class="msg" th:classappend="${msg.sender.name() == 'USER'} ? 'user' : 'ai'" th:data-id="${msg.id}">
-        <strong th:text="${msg.sender == 'USER' ? 'Вы' : 'Ассистент'}"></strong>
+        <strong th:text="${msg.sender.name() == 'USER' ? 'Вы' : 'Ассистент'}"></strong>
         <div th:text="${msg.content}"></div>
         <div th:if="${msg.audioFile != null}">
             <audio controls th:src="@{'/chat/audio/' + ${msg.audioFile}}"></audio>
@@ -138,32 +162,69 @@
         if (loader) loader.remove();
     }
 
+    // 🔹 Лоадер для текстовых ответов
+    function showTextLoader() {
+        if (document.getElementById('textLoader')) return;
+        const loader = document.createElement('div');
+        loader.id = 'textLoader';
+        loader.className = 'msg ai loading-text';
+        loader.innerHTML = `
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <span style="font-size:0.8em;color:var(--text-secondary)">Ассистент печатает...</span>
+        `;
+        chatBox.appendChild(loader);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function hideTextLoader() {
+        const loader = document.getElementById('textLoader');
+        if (loader) loader.remove();
+    }
+
     // 🔹 Интерцепт отправки формы (мгновенный UI без перезагрузки)
     form.addEventListener('submit', async (e) => {
-        e.preventDefault(); // Останавливаем стандартный redirect
+    e.preventDefault();
 
-        const type = requestType.value;
-        const content = textInput.value.trim();
-        const audio = audioFileInput.value;
+    const type = requestType.value;
+    const content = textInput.value.trim();
+    const audio = audioFileInput.value;
 
-        // 1. Мгновенно показываем сообщение пользователя справа
+    // 1. Показываем сообщение пользователя СРАЗУ
+    if (type === 'TEXT' && content) {
+        appendMessage('USER', content, null);
+        textInput.value = '';
+        lastKnownMsgCount++;  // ← ВАЖНО: синхронизируем счётчик!
+    }
+    else if (type === 'AUDIO' && audio) {
+        appendMessage('USER', '🎙️ Голосовое сообщение', audio);
+        showAudioLoader();
+    }
+
+    // 2. Принудительно скроллим вниз (на случай, если сообщение "уехало")
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    // 3. Отправляем на бэкенд
+    try {
+        await fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form)
+        });
+        window.history.replaceState({}, '', `?sessionId=${document.querySelector('[name="sessionId"]').value}`);
+
+        // 4. Показываем лоадер для ТЕКСТОВОГО ответа
         if (type === 'TEXT' && content) {
-            appendMessage('USER', content, null);
-            textInput.value = ''; // Очищаем поле
-        }
-        else if (type === 'AUDIO' && audio) {
-            appendMessage('USER', '🎙️ Голосовое сообщение', audio);
-            showAudioLoader(); // Показываем анимацию обработки
+            showTextLoader();
         }
 
-        // 2. Отправляем данные на бэкенд в фоне
-        try {
-            await fetch(form.action, { method: 'POST', body: new FormData(form) });
-            // Обновляем URL для удобства копирования
-            window.history.replaceState({}, '', `?sessionId=${document.querySelector('[name="sessionId"]').value}`);
-            // Запускаем ожидание ответа ИИ
-            pollHistory();
-        } catch (err) { console.error('Send error:', err); }
+        pollHistory();
+    } catch (err) {
+        console.error('Send error:', err);
+        hideTextLoader(); // Убираем лоадер при ошибке
+        hideAudioLoader();
+        appendMessage('AI', '⚠️ Ошибка отправки. Проверьте соединение.', null);
+        }
     });
 
     // 🔹 Запись голоса
@@ -211,26 +272,29 @@
 
     // 🔹 Поллинг истории (ожидание ответа ИИ)
     async function pollHistory() {
-        const sess = document.querySelector('[name="sessionId"]').value;
-        if (!sess) return;
-        try {
-            const res = await fetch(`/api/chat/${sess}`);
-            if (res.ok) {
-                const msgs = await res.json();
-                if (msgs.length > lastKnownMsgCount) {
-                    hideAudioLoader(); // Убираем лоадер, как только появились новые сообщения
+    const sess = document.querySelector('[name="sessionId"]').value;
+    if (!sess) return;
+    try {
+        const res = await fetch(`/api/chat/${sess}`);
+        if (res.ok) {
+            const msgs = await res.json();
+            if (msgs.length > lastKnownMsgCount) {
+                hideAudioLoader();
+                hideTextLoader(); // ← Убираем текстовый лоадер
 
-                    for (let i = lastKnownMsgCount; i < msgs.length; i++) {
-                        const m = msgs[i];
-                        // Пропускаем временные статусные сообщения бэкенда
-                        if (m.sender === 'AI' && (m.content.includes('Обработка') || m.content.includes('Генерация'))) continue;
-
-                        appendMessage('AI', m.content, m.audio_file, m.timestamp);
-                    }
-                    lastKnownMsgCount = msgs.length;
+                for (let i = lastKnownMsgCount; i < msgs.length; i++) {
+                    const m = msgs[i];
+                    if (m.sender === 'AI' && (m.content.includes('Обработка') || m.content.includes('Генерация')))
+                        continue;
+                    appendMessage(m.sender, m.content, m.audio_file, m.timestamp);
                 }
+                lastKnownMsgCount = msgs.length;
             }
-        } catch (e) { console.warn('Polling error', e); }
+        }
+    } catch (e) {
+        console.warn('Polling error', e);
+        hideTextLoader(); // Убираем лоадер при ошибке сети
+        }
     }
 
     setInterval(pollHistory, 2000);
