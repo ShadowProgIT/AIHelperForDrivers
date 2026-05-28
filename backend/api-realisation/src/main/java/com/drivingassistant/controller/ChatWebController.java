@@ -5,6 +5,10 @@ import com.drivingassistant.dto.ChatMessageDto;
 import com.drivingassistant.enums.AiModelType;
 import com.drivingassistant.service.contract.AiChatService;
 import com.drivingassistant.service.contract.VoiceService;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -55,9 +59,25 @@ public class ChatWebController {
     // Отдача готового аудио (если нужно)
     @GetMapping("/audio/{taskId}")
     @ResponseBody
-    public byte[] getVoiceAudio(@PathVariable String taskId) throws IOException {
-        return voiceService.isReady(taskId)
-                ? java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("data/voice-output/" + taskId + ".wav"))
-                : new byte[0];
+    public ResponseEntity<Resource> getVoiceAudio(@PathVariable String taskId) throws IOException {
+
+        // Проверяем, готов ли файл
+        if (!voiceService.isReady(taskId)) {
+            return ResponseEntity.status(HttpStatus.ACCEPTED) // 202 — принято, но ещё не готово
+                    .body(null);
+        }
+
+        try {
+            Resource audioResource = voiceService.getResponseAudio(taskId);
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_TYPE, "audio/wav")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + taskId + ".wav\"")
+                    .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                    .body(audioResource);
+
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 }
