@@ -24,3 +24,10 @@ rank-bm25==0.2.2
 
 langchain-gigachat==0.3.12
 gigachat>=0.1.41,<0.2.0
+numpy==1.26.4
+pandas==2.2.3
+pyarrow==18.1.0
+scikit-learn>=1.5.0,<1.7.0
+joblib==1.4.2
+pandas==2.2.3
+pyarrow==18.1.0

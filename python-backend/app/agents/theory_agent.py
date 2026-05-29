@@ -6,9 +6,10 @@ from langchain.chains import LLMChain
 from app.rag.vector_store import search_pdd
 from app.utils.redis_client import redis_memory
 from app.utils.llm_client import get_llm  # Твоя фабрика с local/global
+from app.utils.safety_guard import guard_request
+
 
 logger = logging.getLogger(__name__)
-
 
 def clean_llm_response(text: str) -> str:
     """

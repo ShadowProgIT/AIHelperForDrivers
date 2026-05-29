@@ -10,9 +10,9 @@ from app.rag.vector_store import search_pdd
 from app.utils.salute_client import salute_client
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
+from app.utils.safety_guard import guard_request
 
 logger = logging.getLogger(__name__)
-
 
 def clean_voice_response(text: str) -> str:
     if not text:
@@ -139,4 +139,63 @@ def process_practice_request(
     # 7. 🔥 СИНТЕЗ РЕЧИ (TTS)
     audio_filename = _generate_audio(final_answer, output_dir)
 
+    return {"answer": final_answer, "audio_filename": audio_filename}
+
+
+def process_practice_request(
+        question: str,
+        session_id: str,
+        provider: str = "local",
+        output_dir: str = "audio_output"
+) -> Dict[str, Optional[str]]:
+    # === 1. ПРОВЕРКА БЕЗОПАСНОСТИ (Новое) ===
+    safety_check = guard_request(question)
+    if safety_check["blocked"]:
+        logger.warning(f"🚫 Blocked harmful AUDIO request from session {session_id}")
+        emergency_text = safety_check["response"]
+        audio_filename = _generate_audio(emergency_text, output_dir)
+        return {"answer": emergency_text, "audio_filename": audio_filename, "blocked": True}
+    # =========================================
+
+    # 2. Экстренный ответ (приоритет выше, чем у LLM, но после проверки на вредоносность)
+    if is_safety_critical(question):
+        emergency_text = get_emergency_response(question)
+        audio_filename = _generate_audio(emergency_text, output_dir)
+        return {"answer": emergency_text, "audio_filename": audio_filename}
+
+    # 3. Контекст и RAG
+    context_summary = ""
+    try:
+        context_summary = redis_memory.get_summary(session_id) or ""
+    except Exception as e:
+        logger.error(f"Redis Error: {e}")
+
+    rag_context = ""
+    try:
+        rag_context, _ = search_pdd(question, k=3)
+    except Exception as e:
+        logger.error(f"RAG Error: {e}")
+
+    # 4. LLM Chain
+    llm = get_llm(provider)
+    voice_chain = LLMChain(llm=llm, prompt=VOICE_PROMPT)
+
+    try:
+        result = voice_chain.invoke({
+            "context_summary": context_summary,
+            "rag_context": rag_context,
+            "question": question
+        })
+        raw_answer = result['text']
+        final_answer = clean_voice_response(raw_answer)
+
+        new_summary = f"Voice Q: {question[:100]}. A: {final_answer}"
+        redis_memory.save_summary(session_id, new_summary)
+
+    except Exception as e:
+        logger.error(f"Voice Chain Error: {e}")
+        final_answer = "Система недоступна."
+
+    # 5. TTS
+    audio_filename = _generate_audio(final_answer, output_dir)
     return {"answer": final_answer, "audio_filename": audio_filename}
