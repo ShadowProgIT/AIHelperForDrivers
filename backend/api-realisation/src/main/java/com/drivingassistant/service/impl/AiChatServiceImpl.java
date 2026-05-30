@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
+
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -90,7 +91,7 @@ public class AiChatServiceImpl implements AiChatService {
                 .bodyValue(payload)
                 .retrieve()
                 .bodyToMono(ChatResponseDto.class)
-                .block(Duration.ofSeconds(15));
+                .block(Duration.ofSeconds(10000));
     }
 
     @Override

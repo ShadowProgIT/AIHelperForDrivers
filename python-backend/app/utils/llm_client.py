@@ -21,7 +21,7 @@ def get_llm(provider: Literal["local", "global"] = "local"):
         return GigaChat(
             credentials=token,  # Просто передаем токен
             scope="GIGACHAT_API_PERS",  # Scope для физлиц
-            model="GigaChat-Lite",  # Или "GigaChat"
+            model="GigaChat",  # Или "GigaChat"
             verify_ssl_certs=False,  # Важно для локальной разработки без сертификатов Сбера
             temperature=0.1
         )
@@ -31,6 +31,6 @@ def get_llm(provider: Literal["local", "global"] = "local"):
             model=os.getenv("OLLAMA_MODEL", "qwen3.5-driving"),
             base_url=os.getenv("OLLAMA_URL", "http://localhost:11434"),
             temperature=0.1,
-            num_predict=150
+            num_predict=1024
         )
 

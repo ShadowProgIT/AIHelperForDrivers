@@ -4,56 +4,78 @@ import os
 import uuid
 import logging
 from typing import Dict, Optional
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
 from app.utils.redis_client import redis_memory
 from app.utils.llm_client import get_llm
 from app.rag.vector_store import search_pdd
 from app.utils.salute_client import salute_client
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from app.utils.safety_guard import guard_request
 
 logger = logging.getLogger(__name__)
 
+
 def clean_voice_response(text: str) -> str:
+    """
+    Умная очистка: сохраняет начало ответа, если оно осмысленное.
+    """
     if not text:
         return "Будьте внимательнее на дороге."
 
-    # 1. Удаляем блоки мышления
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
-    # 2. Обрезаем до первого русского слова (защита от английского преамбула)
-    match = re.search(r'[а-яА-Я]{3,}', text)
-    if match:
-        text = text[match.start():]
-    # 3. Удаляем ссылки на пункты ПДД
-    text = re.sub(r'\(?\s*[пП]ункт?\s*[\d.]+\s*\)?', '', text)
-    text = re.sub(r'\(?\s*[пП]\.\s*[\d.]+\s*\)?', '', text)
-    text = re.sub(r'согласно\s+пункту?\s*[\d.]+', '', text, flags=re.IGNORECASE)
+    # 1. Удаляем блоки <think> и любые теги
+    text = re.sub(r'<?think>?.*?</?think>?', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', '', text)
 
+    # 2. Удаляем служебные маркеры
+    text = re.sub(r'(Thinking Process|Analysis|Answer|Response|Conclusion|Style|Constraint):', '', text,
+                  flags=re.IGNORECASE)
+
+    # 3. Чистим лишние пробелы и переносы
     text = ' '.join(text.strip().split())
-    # 4. Берём первое предложение (макс 150 символов)
-    sentences = [s.strip() for s in re.split(r'[.!?]+', text) if s.strip()]
-    if not sentences:
-        return "Не могу точно определить ситуацию."
 
-    result = sentences[0] + '.'
-    return result[:147] + '...' if len(result) > 150 else result.strip()
+    # 4. Ищем начало русского текста (первое слово с русской буквы)
+    match = re.search(r'[а-яА-Я][а-яА-Я,\s\-!?\.«»]+', text)
+    if not match:
+        return "Не могу дать точный ответ."
+
+    # Берём текст начиная с этого места
+    text = text[match.start():]
+
+    # 5. Если текст уже хороший (начинается с нормального слова, длина > 30) — возвращаем как есть
+    first_word = text.split()[0] if text.split() else ""
+    if len(first_word) >= 2 and len(text) > 30 and not first_word.upper() == first_word:
+        # Обрезаем до первой точки, но не короче 50 символов
+        if '.' in text:
+            sentences = text.split('.')
+            candidate = sentences[0].strip() + '.'
+            if len(candidate) >= 40:
+                return candidate[:200]
+        return text[:200].strip()
+
+    # 6. Фоллбэк: ищем первое полноценное предложение (но игнорируем аббревиатуры типа ПДД)
+    # Регулярка: слово из 2+ букв, потом текст, потом точка
+    sentences = re.findall(r'([А-Яа-я]{2,}[\sа-яА-Я,\-!?«»]+[.!?])', text)
+    for sentence in sentences:
+        sentence = sentence.strip()
+        # Пропускаем слишком короткие или подозрительные
+        if len(sentence) > 25 and not sentence.upper() == sentence:
+            return sentence[:200]
+
+    # 7. Последний фоллбэк: просто берём первые 150 символов
+    return text[:150].strip() + '...' if len(text) > 150 else text.strip()
 
 
 def is_safety_critical(situation: str) -> bool:
-    keywords = ["авария", "дтп", "пешеход", "ребенок", "красный", "стоп", "тормоз", "опасно", "наезд"]
+    keywords = ["авария", "дтп", "ребенок", "стоп", "тормоз", "опасно", "наезд"]
     return any(k in situation.lower() for k in keywords)
 
 
 def get_emergency_response(situation: str) -> str:
-    if "пешеход" in situation.lower() or "человек" in situation.lower():
-        return "Внимание! Пешеход на дороге, притормозите!"
     if "красный" in situation.lower():
         return "Остановитесь! Красный сигнал светофора!"
     return "Осторожно! Снизьте скорость и будьте внимательнее."
 
 
 def _generate_audio(text: str, output_dir: str) -> Optional[str]:
-    """Внутренний хелпер для TTS"""
     filename = f"response_{uuid.uuid4().hex[:8]}.wav"
     path = os.path.join(output_dir, filename)
     os.makedirs(output_dir, exist_ok=True)
@@ -65,81 +87,27 @@ def _generate_audio(text: str, output_dir: str) -> Optional[str]:
         return None
 
 
-# === ЦЕПОЧКА 2: VOICE CHAIN (для AUDIO режима) ===
-# Явное использование LangChain LLMChain для соответствия требованию "2 цепочки"
 VOICE_PROMPT = PromptTemplate.from_template(
-    """Ты — голосовой ассистент водителя.
-Отвечай ОЧЕНЬ КРАТКО (1 короткое предложение). Начинай с действия.
-Не цитируй пункты ПДД вслух.
-КОНТЕКСТ ДИАЛОГА: {context_summary}
-ИНФОРМАЦИЯ ИЗ ПДД: {rag_context}
-СИТУАЦИЯ: {question}
-ОТВЕТ:"""
+    """Ты — эксперт по ПДД РФ, помогаешь водителям.
+Твоя задача — дать понятный, полезный ответ на вопрос о правилах дорожного движения.
+
+ПРАВИЛА ОТВЕТА:
+1. Отвечай 1-2 предложениями (достаточно для голосового ответа)
+2. Указывай конкретный пункт ПДД, если знаешь
+3. Объясняй кратко, ПОЧЕМУ нельзя/можно
+4. Если не знаешь точный пункт — дай общий совет по безопасности
+
+ПРИМЕРЫ ХОРОШИХ ОТВЕТОВ:
+❌ Слишком коротко: "Нельзя."
+✅ Хорошо: "Обгон на перекрёстке запрещён согласно пункту 11.4 ПДД РФ, так как это создаёт аварийную ситуацию."
+
+❌ Слишком коротко: "Запрещено ПДД."
+✅ Хорошо: "Остановка на пешеходном переходе запрещена пунктом 12.4 ПДД. Это опасно для пешеходов."
+Вопрос: {question}
+Контекст ПДД: {rag_context}
+
+Ответ:"""
 )
-
-
-def process_practice_request(
-        question: str,
-        session_id: str,
-        provider: str = "local",  # <-- НОВЫЙ ПАРАМЕТР для переключения моделей
-        output_dir: str = "audio_output"
-) -> Dict[str, Optional[str]]:
-    """
-    Основная логика Practice Agent.
-
-    Реализует требование: "Использование 2-х цепочек LangChain".
-    Цепочка 2 (здесь): VOICE_PROMPT | LLMChain для генерации голосового ответа.
-    """
-    logger.info(f"🎙️ Practice Request | Session: {session_id} | Q: '{question[:50]}...'")
-
-    # 1. Экстренный ответ (без LLM, мгновенно)
-    if is_safety_critical(question):
-        emergency_text = get_emergency_response(question)
-        audio_filename = _generate_audio(emergency_text, output_dir)
-        return {"answer": emergency_text, "audio_filename": audio_filename}
-
-    # 2. Контекст из Redis
-    context_summary = ""
-    try:
-        context_summary = redis_memory.get_summary(session_id) or ""
-    except Exception as e:
-        logger.error(f"Redis Error: {e}")
-
-    # 3. RAG поиск
-    rag_context = ""
-    try:
-        rag_context, _ = search_pdd(question, k=3)
-    except Exception as e:
-        logger.error(f"RAG Error: {e}")
-
-    # 4. Инициализация LLM через фабрику (поддержка local/global)
-    llm = get_llm(provider)
-
-    # 5. Создаем и запускаем ЦЕПОЧКУ 2 (Voice Chain) — явное использование LangChain
-    voice_chain = LLMChain(llm=llm, prompt=VOICE_PROMPT)
-
-    try:
-        # invoke возвращает dict {'text': '...'}
-        result = voice_chain.invoke({
-            "context_summary": context_summary,
-            "rag_context": rag_context,
-            "question": question
-        })
-        raw_answer = result['text']
-        final_answer = clean_voice_response(raw_answer)
-
-        # 6. Обновление контекста в Redis (внутри логики обработки)
-        new_summary = f"Voice Q: {question[:100]}. A: {final_answer}"
-        redis_memory.save_summary(session_id, new_summary)
-
-    except Exception as e:
-        logger.error(f"Voice Chain Error: {e}")
-        final_answer = "Система недоступна."
-
-    # 7. 🔥 СИНТЕЗ РЕЧИ (TTS)
-    audio_filename = _generate_audio(final_answer, output_dir)
-
-    return {"answer": final_answer, "audio_filename": audio_filename}
 
 
 def process_practice_request(
@@ -148,54 +116,46 @@ def process_practice_request(
         provider: str = "local",
         output_dir: str = "audio_output"
 ) -> Dict[str, Optional[str]]:
-    # === 1. ПРОВЕРКА БЕЗОПАСНОСТИ (Новое) ===
-    safety_check = guard_request(question)
-    if safety_check["blocked"]:
-        logger.warning(f"🚫 Blocked harmful AUDIO request from session {session_id}")
-        emergency_text = safety_check["response"]
-        audio_filename = _generate_audio(emergency_text, output_dir)
-        return {"answer": emergency_text, "audio_filename": audio_filename, "blocked": True}
-    # =========================================
+    logger.info(f"🎙️ Practice Request | Session: {session_id} | Q: '{question[:50]}...'")
 
-    # 2. Экстренный ответ (приоритет выше, чем у LLM, но после проверки на вредоносность)
+    # 1. Экстренный ответ
     if is_safety_critical(question):
         emergency_text = get_emergency_response(question)
         audio_filename = _generate_audio(emergency_text, output_dir)
         return {"answer": emergency_text, "audio_filename": audio_filename}
 
-    # 3. Контекст и RAG
-    context_summary = ""
-    try:
-        context_summary = redis_memory.get_summary(session_id) or ""
-    except Exception as e:
-        logger.error(f"Redis Error: {e}")
+    # 2. Контекст и RAG
+    context_summary = redis_memory.get_summary(session_id) or ""
+    rag_context, _ = search_pdd(question, k=3)
 
-    rag_context = ""
-    try:
-        rag_context, _ = search_pdd(question, k=3)
-    except Exception as e:
-        logger.error(f"RAG Error: {e}")
+    # Если контекст пустой — пишем явно
+    if not rag_context or len(rag_context.strip()) < 20:
+        rag_context = "Контекст не найден. Используй общие знания ПДД."
 
-    # 4. LLM Chain
-    llm = get_llm(provider)
-    voice_chain = LLMChain(llm=llm, prompt=VOICE_PROMPT)
-
+    # 3. LLM Chain
     try:
+        llm = get_llm(provider)
+        voice_chain = LLMChain(llm=llm, prompt=VOICE_PROMPT)
+
+        # ВАЖНО: передаём ТОЧНО те же ключи, что в промпте {question} и {rag_context}
         result = voice_chain.invoke({
-            "context_summary": context_summary,
-            "rag_context": rag_context,
-            "question": question
+            "question": question,
+            "rag_context": rag_context
         })
+
         raw_answer = result['text']
+        logger.info(f"RAW ANSWER: {raw_answer[:100]}")  # Для отладки
+
         final_answer = clean_voice_response(raw_answer)
 
+        # Обновление Redis
         new_summary = f"Voice Q: {question[:100]}. A: {final_answer}"
         redis_memory.save_summary(session_id, new_summary)
 
     except Exception as e:
-        logger.error(f"Voice Chain Error: {e}")
+        logger.error(f"Voice Chain Error: {e}", exc_info=True)
         final_answer = "Система недоступна."
 
-    # 5. TTS
+    # 4. TTS
     audio_filename = _generate_audio(final_answer, output_dir)
     return {"answer": final_answer, "audio_filename": audio_filename}

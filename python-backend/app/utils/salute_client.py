@@ -79,65 +79,47 @@ class SaluteSpeechClient:
             raise RuntimeError(f"Не удалось получить SaluteSpeech токен: {e}")
 
     def speech_to_text(self, audio_path: str) -> str:
-        """
-        Распознаёт речь из WAV-файла.
-
-        Требования к файлу:
-        - Формат: WAV
-        - Частота: 16000 Гц
-        - Каналы: 1 (моно)
-        - Битность: 16 бит
-        - Кодировка: PCM
-
-        Returns:
-            Распознанный текст (строка)
-        """
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Аудиофайл не найден: {audio_path}")
 
-        token = self._get_access_token()
+        try:
+            from pydub import AudioSegment
+            import io
 
-        # Заголовки для STT
+            logger.info(f"🔄 Конвертация: {os.path.basename(audio_path)}")
+            audio = AudioSegment.from_file(audio_path)
+            audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
+
+            buffer = io.BytesIO()
+            audio.export(buffer, format="wav", codec="pcm_s16le")
+            buffer.seek(0)
+            audio_data = buffer.read()
+            logger.info(f"✅ Конвертировано: {len(audio_data)} байт")
+        except Exception as e:
+            logger.error(f"❌ Ошибка конвертации: {e}")
+            raise RuntimeError(f"Не удалось обработать аудио. Ошибка: {e}")
+
+        token = self._get_access_token()
         headers = {
             "Authorization": f"Bearer {token}",
-            "Content-Type": f"audio/x-pcm;bit={self.bit_depth};rate={self.sample_rate};channels={self.channels}"
+            "Content-Type": "audio/x-pcm;bit=16;rate=16000;channels=1"
         }
-
-        # Параметры запроса
-        params = {
-            "lang": "ru-RU",  # Язык
-            "profanityFilter": "true",  # Фильтр мата
-        }
+        params = {"lang": "ru-RU", "profanityFilter": "true"}
 
         try:
-            with open(audio_path, "rb") as f:
-                audio_data = f.read()
-
-            logger.info(f"Отправка аудио на распознавание: {audio_path}")
-
             response = requests.post(
-                self.stt_url,
-                headers=headers,
-                params=params,
-                data=audio_data,
-                verify=False,
-                timeout=60
+                self.stt_url, headers=headers, params=params,
+                data=audio_data, verify=False, timeout=60
             )
-            response.raise_for_status()
+            if response.status_code != 200:
+                raise RuntimeError(f"Sber API Error {response.status_code}: {response.text}")
 
             result = response.json()
-
             if "result" in result and result["result"]:
-                # Объединяем все распознанные фразы в один текст
-                recognized_text = " ".join(result["result"]).strip()
-                logger.info(f"Распознано: '{recognized_text}'")
-                return recognized_text
-            else:
-                logger.warning("Распознавание вернуло пустой результат")
-                return ""
-
-        except requests.RequestException as e:
-            logger.error(f"Ошибка STT: {e}")
+                return " ".join(result["result"]).strip()
+            return ""
+        except Exception as e:
+            logger.error(f"❌ STT Error: {e}")
             raise RuntimeError(f"Не удалось распознать речь: {e}")
 
     def text_to_speech(self, text: str, output_path: str, voice: str = "Nec_24000") -> str:

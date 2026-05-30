@@ -34,10 +34,15 @@ services:
     ports:
       - "8000:8000"  
     volumes:
-      - ./python-backend:/app
-      - ./audio_input:/app/audio_input            
+      # Код приложения (только чтение, чтобы не перезаписывать)
+      - ./python-backend/app:/app/app:ro
+      - ./python-backend/.env:/app/.env:ro
+      # Папки для аудио (чтение и запись)
+      - ./audio_input:/app/audio_input
       - ./audio_output:/app/audio_output
-      # - ./data:/app/data
+      # Данные для RAG
+      - ./data:/app/data:ro
+      - ./chroma_db:/app/chroma_db
     environment:
       - OLLAMA_URL=http://ollama-server:11434  
       - REDIS_HOST=redis-cache                  
