@@ -51,7 +51,14 @@ public class AiChatServiceImpl implements AiChatService {
         AiModelType modelType = request.modelType() != null ? request.modelType() : AiModelType.LOCAL;
 
         String userContent = request.content() != null ? request.content() : "🎙️ Голосовое сообщение";
-        messageRepository.save(new Message(finalSessionId, SenderType.USER, userContent, request.audioFile()));
+
+        // 🔹 Гарантируем сохранение null, а не пустой строки "", для текстовых запросов
+        String userAudio = request.audioFile();
+        if (userAudio != null && userAudio.isBlank()) {
+            userAudio = null;
+        }
+
+        messageRepository.save(new Message(finalSessionId, SenderType.USER, userContent, userAudio));
 
         if ("AUDIO".equalsIgnoreCase(request.requestType())) {
             CompletableFuture.runAsync(() -> processVoiceAsync(finalSessionId, request.audioFile(), modelType));
