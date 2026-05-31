@@ -2,470 +2,493 @@
 <html lang="ru" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Помощник Водителя</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AI Driving Assistant — Помощник водителя</title>
     <style>
-        :root {
-            --bg-color: #f5f7fa;
-            --chat-bg: #ffffff;
-            --user-bubble: #007aff;
-            --user-text: #ffffff;
-            --ai-bubble: #e9ecef;
-            --ai-text: #212529;
-            --input-bg: #ffffff;
-            --border-color: #dee2e6;
-            --shadow: 0 2px 8px rgba(0,0,0,0.08);
-            --radius: 16px;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-
-        body { background: var(--bg-color); height: 100vh; display: flex; justify-content: center; }
-
-        .chat-container {
-            width: 100%; max-width: 600px; background: var(--chat-bg);
-            display: flex; flex-direction: column; height: 100vh; box-shadow: var(--shadow);
-            position: relative;
+        body {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(145deg, #e9f0fc 0%, #f3f7fe 100%);
+            min-height: 100vh;
+            padding: 24px 16px;
         }
 
-        header {
-            padding: 16px; background: var(--chat-bg); border-bottom: 1px solid var(--border-color);
-            display: flex; justify-content: space-between; align-items: center; z-index: 10;
+        .app-container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(2px);
+            border-radius: 2rem;
+            box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.2), 0 1px 3px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
         }
-        header h1 { font-size: 18px; font-weight: 600; }
-        .session-id { font-size: 12px; color: #6c757d; }
 
-        .messages {
-            flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;
+        .chat-header {
+            padding: 1.25rem 1.5rem;
+            background: white;
+            border-bottom: 1px solid #eef2f6;
+        }
+        .chat-header h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .chat-header h2:before {
+            content: "🚗";
+            font-size: 1.6rem;
+        }
+        .status-badge {
+            font-size: 0.7rem;
+            font-weight: normal;
+            background: #eef2ff;
+            padding: 0.2rem 0.6rem;
+            border-radius: 30px;
+            color: #2563eb;
+            margin-left: 0.75rem;
+        }
+
+        .chat-box {
+            background: #fcfcfd;
+            height: 460px;
+            overflow-y: auto;
+            padding: 1.25rem 1.25rem 0.5rem 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
             scroll-behavior: smooth;
         }
+        .chat-box::-webkit-scrollbar { width: 5px; }
+        .chat-box::-webkit-scrollbar-track { background: #eef2f8; border-radius: 10px; }
+        .chat-box::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
-        .message { display: flex; flex-direction: column; max-width: 85%; position: relative; }
-        .message.user { align-self: flex-end; }
-        .message.ai { align-self: flex-start; }
+        .msg {
+            max-width: 80%;
+            padding: 0.6rem 1rem;
+            border-radius: 1.2rem;
+            line-height: 1.45;
+            font-size: 0.95rem;
+            word-wrap: break-word;
+            animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px);}
+            to { opacity: 1; transform: translateY(0);}
+        }
+        .user {
+            background: #2563eb;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .ai {
+            background: #f1f5f9;
+            color: #0f172a;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            border: 1px solid #e2e8f0;
+        }
+        .message-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+        }
+        .avatar {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            background: #eef2ff;
+        }
+        .user .avatar { background: rgba(255,255,255,0.2); }
+        .ai .avatar { background: #e2e8f0; }
+        .sender-name { font-size: 0.7rem; font-weight: 600; opacity: 0.8; }
+        .timestamp { font-size: 0.65rem; margin-left: 8px; opacity: 0.6; }
 
-        .bubble {
-            padding: 10px 14px; border-radius: var(--radius); word-wrap: break-word; line-height: 1.4;
+        audio {
+            max-width: 200px;
+            margin-top: 8px;
+            border-radius: 20px;
+            height: 32px;
+        }
+        audio::-webkit-media-controls-panel { background-color: #f8fafc; }
+
+        .controls {
+            background: white;
+            border-top: 1px solid #eff3f8;
+            padding: 1rem 1.5rem 1.5rem;
+        }
+        .model-selector {
+            display: flex;
+            gap: 0.6rem;
+            background: #f8fafc;
+            padding: 0.3rem;
+            border-radius: 40px;
+            width: fit-content;
+            margin-bottom: 1rem;
+        }
+        .model-option {
+            font-size: 0.8rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: transparent;
+            padding: 0.3rem 1rem;
+            border-radius: 32px;
+            cursor: pointer;
+            transition: 0.2s;
+            color: #334155;
+        }
+        .model-option input {
+            margin: 0;
+            accent-color: #2563eb;
+            width: 14px;
+            height: 14px;
+        }
+        .model-option:has(input:checked) {
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            color: #0f172a;
+        }
+        .input-container {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .input-field {
+            flex: 1;
+            padding: 0.8rem 1.2rem;
+            font-size: 0.95rem;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 60px;
+            background: white;
+            transition: 0.2s;
+            font-family: inherit;
+        }
+        .input-field:focus {
+            border-color: #2563eb;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+        }
+        .input-field[readonly] {
+            background: #f8fafc;
+            cursor: progress;
+            border-color: #cbd5e1;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 0.7rem 1.2rem;
+            border: none;
+            border-radius: 60px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-send {
+            background: #2563eb;
+            color: white;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
-        .user .bubble { background: var(--user-bubble); color: var(--user-text); border-bottom-right-radius: 4px; }
-        .ai .bubble { background: var(--ai-bubble); color: var(--ai-text); border-bottom-left-radius: 4px; }
-
-        .timestamp { font-size: 10px; color: #999; margin-top: 4px; align-self: flex-end; padding: 0 4px; }
-
-        .audio-player { margin-top: 6px; width: 100%; }
-        audio { width: 100%; height: 36px; border-radius: 8px; }
-
-        /* Анимация набора текста */
-        .typing-indicator { display: none; align-self: flex-start; margin: 4px 0; }
-        .typing-indicator.visible { display: flex; }
-        .dots { display: flex; gap: 4px; padding: 10px 14px; background: var(--ai-bubble); border-radius: var(--radius); }
-        .dots span {
-            width: 8px; height: 8px; background: #888; border-radius: 50%;
-            animation: bounce 1.4s infinite ease-in-out both;
+        .btn-send:hover:not(:disabled) { background: #1e40af; transform: scale(0.97); }
+        .btn-voice {
+            background: #f59e0b;
+            color: white;
         }
-        .dots span:nth-child(1) { animation-delay: -0.32s; }
-        .dots span:nth-child(2) { animation-delay: -0.16s; }
-        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
-
-        .input-area {
-            padding: 12px; background: var(--chat-bg); border-top: 1px solid var(--border-color);
-            display: flex; gap: 8px; align-items: center;
+        .btn-voice:hover:not(:disabled) { background: #d97706; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-voice.recording {
+            background: #dc2626;
+            animation: pulse 1s infinite;
         }
-        .input-wrapper { flex: 1; position: relative; }
-        #message-input {
-            width: 100%; padding: 12px 40px 12px 14px; border: 1px solid var(--border-color);
-            border-radius: 24px; outline: none; font-size: 15px; transition: border 0.2s;
+        @keyframes pulse {
+            0% { opacity: 0.9; }
+            50% { opacity: 1; box-shadow: 0 0 0 4px rgba(220,38,38,0.3);}
+            100% { opacity: 0.9; }
         }
-        #message-input:focus { border-color: var(--user-bubble); }
-
-        .icon-btn {
-            width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; font-size: 18px;
-            transition: all 0.2s; background: transparent; color: #555;
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #cbd5e1;
+            border-top-color: #2563eb;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin-right: 8px;
         }
-        .icon-btn:hover:not(:disabled) { background: #e9ecef; }
-        .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        #send-btn { background: var(--user-bubble); color: white; }
-        #send-btn:hover:not(:disabled) { background: #0056b3; }
-        #voice-btn.recording { background: #ff3b30; color: white; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); box-shadow: 0 0 0 8px rgba(255, 59, 48, 0.2); } 100% { transform: scale(1); } }
-
-        .system-msg { align-self: center; font-size: 12px; color: #6c757d; margin: 8px 0; text-align: center; }
-
-         /* Переключатель модели */
-        .model-toggle {
-            display: flex; align-items: center; gap: 8px;
-            padding: 6px 12px; background: var(--ai-bubble);
-            border-radius: 20px; font-size: 12px; font-weight: 500;
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-dots {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: #475569;
         }
-        .model-label { color: #6c757d; transition: color 0.2s; }
-        .model-label.active { color: var(--user-bubble); font-weight: 600; }
-        .model-label.global.active { color: #6f42c1; }
-
-        /* Toggle switch (iOS-style) */
-        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider {
-            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #ccc; transition: .3s; border-radius: 24px;
+        @media (max-width: 700px) {
+            .msg { max-width: 90%; }
+            .input-container { flex-direction: column; align-items: stretch; }
+            .button-group button { flex: 1; }
+            .model-selector { width: 100%; justify-content: center; }
         }
-        .slider:before {
-            position: absolute; content: ""; height: 20px; width: 20px; left: 2px; bottom: 2px;
-            background-color: white; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }
-        input:checked + .slider { background-color: #6f42c1; }
-        input:checked + .slider:before { transform: translateX(20px); }
-        .slider.round { border-radius: 24px; }
-        .slider.round:before { border-radius: 50%; }
+        @media (max-width: 480px) { .msg { max-width: 95%; } }
     </style>
 </head>
 <body>
-<div class="chat-container">
-    <header>
-        <h1>🚗 AI Помощник</h1>
-        <span class="session-id" th:text="${sessionId != null ? 'Сессия: ' + #strings.substring(sessionId, 0, 8) + '...' : 'Новая сессия'}"></span>
-        <div class="model-toggle" title="Выберите ИИ-модель">
-            <span class="model-label local" th:classappend="${request.modelType?.name() == 'LOCAL'} ? 'active' : ''">🟢 LOCAL</span>
-            <label class="switch">
-                <input type="checkbox" id="model-switch" th:checked="${request.modelType?.name() == 'GIGACHAT'}">
-                <span class="slider round"></span>
-            </label>
-            <span class="model-label global" th:classappend="${request.modelType?.name() == 'GIGACHAT'} ? 'active' : ''">🔵 GIGACHAT</span>
-        </div>
-    </header>
-
-    <div class="messages" id="messages">
-        <!-- История из бэкенда -->
-        <!-- История из бэкенда -->
-        <!-- История из бэкенда -->
-        <div th:each="msg : ${messages}"
-             th:classappend="${msg.sender.name() == 'USER'} ? 'message user' : 'message ai'">
-
-            <div class="bubble" th:text="${msg.content}"></div>
-
-            <!-- Аудио-плеер: для ИИ (из output) -->
-            <div th:if="${msg.audioFile != null and msg.sender.name() == 'AI'}" class="audio-player">
-                <audio controls preload="metadata">
-                    <source th:src="@{/chat/audio/{taskId}(taskId=${#strings.endsWith(msg.audioFile, '.wav') ? #strings.substring(msg.audioFile, 0, -4) : msg.audioFile})}" type="audio/wav">
-                    Ваш браузер не поддерживает аудио.
-                </audio>
+<div class="app-container">
+    <div class="chat-header">
+        <h2>AI Помощник водителя <span class="status-badge">● онлайн</span></h2>
+    </div>
+    <div class="chat-box" id="chatBox">
+        <!-- История загружается с сервера -->
+        <div th:each="msg : ${messages}" class="msg" th:classappend="${msg.sender.name() == 'USER'} ? 'user' : 'ai'">
+            <div class="message-meta">
+                <span class="avatar" th:text="${msg.sender.name() == 'USER'} ? '👤' : '🤖'"></span>
+                <span class="sender-name" th:text="${msg.sender.name() == 'USER'} ? 'Вы' : 'Ассистент'"></span>
+                <span class="timestamp" th:text="${#temporals.format(msg.timestamp, 'HH:mm')}"></span>
             </div>
-
-            <!-- Аудио-плеер: для пользователя (из input) -->
-            <div th:if="${msg.audioFile != null and msg.sender.name() == 'USER'}" class="audio-player">
-                <audio controls preload="metadata">
-                    <source th:src="@{/chat/audio/input/{taskId}(taskId=${#strings.endsWith(msg.audioFile, '.wav') ? #strings.substring(msg.audioFile, 0, -4) : msg.audioFile})}" type="audio/wav">
-                    Ваш браузер не поддерживает аудио.
-                </audio>
-            </div>
-
-            <div class="timestamp" th:text="${#temporals.format(msg.timestamp, 'HH:mm')}"></div>
+            <div th:text="${msg.content}"></div>
+            <audio th:if="${msg.audioFile}" controls
+                   th:attr="src=${msg.sender.name() == 'USER'} ? @{/chat/audio/input/{file}(file=${msg.audioFile})} : @{/chat/audio/{file}(file=${msg.audioFile})}"></audio>
         </div>
-
-        <!-- Индикатор набора -->
-        <div class="typing-indicator" id="typing-indicator">
-            <div class="dots"><span></span><span></span><span></span></div>
+        <div id="loading" class="msg ai" style="display: none;">
+            <div class="loading-dots">
+                <div class="loading-spinner"></div>
+                <span>Ассистент набирает ответ...</span>
+            </div>
         </div>
     </div>
 
-    <div class="input-area">
-        <div class="input-wrapper">
-            <form id="chat-form">
-                <input type="hidden" id="session-id" th:value="${sessionId}">
-                <input type="text" id="message-input" placeholder="Спросите о ПДД..." autocomplete="off" required>
-            </form>
+    <div class="controls">
+        <div class="model-selector" id="modelSelector">
+            <label class="model-option">
+                <input type="radio" name="modelType" value="LOCAL" checked> 🖥️ Local
+            </label>
+            <label class="model-option">
+                <input type="radio" name="modelType" value="GIGACHAT"> ☁️ GigaChat
+            </label>
         </div>
-        <button type="button" id="voice-btn" class="icon-btn" title="Голосовой запрос">🎤</button>
-        <button type="submit" id="send-btn" class="icon-btn" form="chat-form">➤</button>
+        <div class="input-container">
+            <input type="text" id="txtInput" class="input-field" placeholder="Напишите вопрос по ПДД..." autocomplete="off">
+            <div class="button-group">
+                <button type="submit" id="btnSend" class="btn-send">✉️ Отправить</button>
+                <button type="button" id="btnVoice" class="btn-voice" title="Голосовое сообщение">🎤 Запись</button>
+            </div>
+        </div>
     </div>
 </div>
 
+<form id="hiddenForm" th:action="@{/chat}" th:object="${request}" method="post" style="display: none;">
+    <input type="hidden" th:field="*{sessionId}" id="sessionIdField">
+    <input type="hidden" id="hiddenReqType" th:field="*{requestType}">
+    <input type="hidden" id="hiddenContent" th:field="*{content}">
+    <input type="hidden" id="hiddenAudioFile" th:field="*{audioFile}">
+    <input type="hidden" id="hiddenModelType" th:field="*{modelType}">
+</form>
+
 <script>
     (function() {
+        // Элементы
+        const chatBox = document.getElementById('chatBox');
+        const textInput = document.getElementById('txtInput');
+        const btnSend = document.getElementById('btnSend');
+        const btnVoice = document.getElementById('btnVoice');
+        const loadingDiv = document.getElementById('loading');
 
-        // === ПЕРЕКЛЮЧАТЕЛЬ МОДЕЛЕЙ ===
-        const modelSwitch = document.getElementById('model-switch');
-        const MODEL_KEY = 'ai_helper_model_preference';
+        const hiddenForm = document.getElementById('hiddenForm');
+        const sessionIdField = document.getElementById('sessionIdField');
+        const hiddenReqType = document.getElementById('hiddenReqType');
+        const hiddenContent = document.getElementById('hiddenContent');
+        const hiddenAudioFile = document.getElementById('hiddenAudioFile');
+        const hiddenModelType = document.getElementById('hiddenModelType');
 
-        // Инициализация: загружаем сохранённый выбор или используем значение из Thymeleaf
-        function initModelPreference() {
-            const saved = localStorage.getItem(MODEL_KEY);
-            if (saved) {
-                modelSwitch.checked = (saved === 'GLOBAL');
+        const modelRadios = document.querySelectorAll('#modelSelector input[type="radio"]');
+
+        let isProcessing = false;
+        let currentSessionId = /*[[${sessionId}]]*/ null;
+        if (currentSessionId) sessionIdField.value = currentSessionId;
+
+        function getSelectedModel() {
+            for (let radio of modelRadios) {
+                if (radio.checked) return radio.value;
             }
-            // Если saved === null — оставляем как передал сервер (Thymeleaf)
-            updateModelLabels();
+            return 'LOCAL';
         }
 
-        function updateModelLabels() {
-            document.querySelector('.model-label.local').classList.toggle('active', !modelSwitch.checked);
-            document.querySelector('.model-label.global').classList.toggle('active', modelSwitch.checked);
+        function updateModelField() {
+            hiddenModelType.value = getSelectedModel();
         }
 
-        function getCurrentModelType() {
-            return modelSwitch.checked ? 'GLOBAL' : 'LOCAL';
+        function addMessageToChat(sender, content, audioFile = null) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'msg ' + (sender === 'USER' ? 'user' : 'ai');
+            const metaDiv = document.createElement('div');
+            metaDiv.className = 'message-meta';
+            const avatarSpan = document.createElement('span');
+            avatarSpan.className = 'avatar';
+            avatarSpan.textContent = sender === 'USER' ? '👤' : '🤖';
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'sender-name';
+            nameSpan.textContent = sender === 'USER' ? 'Вы' : 'Ассистент';
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'timestamp';
+            timeSpan.textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            metaDiv.appendChild(avatarSpan);
+            metaDiv.appendChild(nameSpan);
+            metaDiv.appendChild(timeSpan);
+            const contentDiv = document.createElement('div');
+            contentDiv.textContent = content || (audioFile ? '🎙️ Голосовое сообщение' : '');
+            msgDiv.appendChild(metaDiv);
+            msgDiv.appendChild(contentDiv);
+            if (audioFile) {
+                const audioElem = document.createElement('audio');
+                audioElem.controls = true;
+                audioElem.style.maxWidth = '200px';
+                audioElem.style.marginTop = '6px';
+                const audioUrl = sender === 'USER' ? `/chat/audio/input/${audioFile}` : `/chat/audio/${audioFile}`;
+                audioElem.src = audioUrl;
+                msgDiv.appendChild(audioElem);
+            }
+            chatBox.insertBefore(msgDiv, loadingDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        // Сохраняем выбор и обновляем визуал
-        modelSwitch.addEventListener('change', () => {
-            const model = getCurrentModelType();
-            localStorage.setItem(MODEL_KEY, model);
-            updateModelLabels();
-            // Опционально: показать уведомление
-            addSystemMessage(`🔄 Модель переключена на ${model === 'GLOBAL' ? 'GigaChat ☁️' : 'Локальную 💻'}`);
+        function showLoader() {
+            loadingDiv.style.display = 'block';
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function setProcessing(processing) {
+            isProcessing = processing;
+            textInput.readOnly = processing;
+            btnSend.disabled = processing;
+            btnVoice.disabled = processing;
+            modelRadios.forEach(radio => radio.disabled = processing);
+            if (!processing) {
+                btnVoice.classList.remove('recording');
+                btnVoice.textContent = '🎤 Запись';
+            }
+        }
+
+        // Отправка текстового сообщения
+        function sendTextMessage() {
+            if (isProcessing) return;
+            const rawText = textInput.value.trim();
+            if (!rawText) return;
+
+            // Подготовка скрытой формы
+            hiddenReqType.value = 'TEXT';
+            hiddenContent.value = rawText;
+            hiddenAudioFile.value = '';
+            updateModelField();
+
+            // Локально добавляем сообщение в чат
+            addMessageToChat('USER', rawText, null);
+            textInput.value = '';
+
+            setProcessing(true);
+            showLoader();
+            hiddenForm.submit();
+        }
+
+        // Отправка голосового сообщения
+        function sendVoice(taskId) {
+            hiddenReqType.value = 'AUDIO';
+            hiddenContent.value = '';
+            hiddenAudioFile.value = taskId;
+            updateModelField();
+
+            setProcessing(true);
+            showLoader();
+            hiddenForm.submit();
+        }
+
+        // Обработчики
+        textInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !isProcessing && textInput.value.trim()) {
+                e.preventDefault();
+                sendTextMessage();
+            }
         });
 
-        // Вызываем при загрузке
-        initModelPreference();
-        // Элементы DOM
-        const messagesEl = document.getElementById('messages');
-        const typingEl = document.getElementById('typing-indicator');
-        const formEl = document.getElementById('chat-form');
-        const inputEl = document.getElementById('message-input');
-        const voiceBtn = document.getElementById('voice-btn');
-        const sendBtn = document.getElementById('send-btn');
-        const sessionIdInput = document.getElementById('session-id');
+        btnSend.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!isProcessing && textInput.value.trim()) {
+                sendTextMessage();
+            }
+        });
 
+        // Голосовая запись
         let mediaRecorder = null;
         let audioChunks = [];
-        let isRecording = false;
-
-        // Инициализация: скролл вниз
-        window.addEventListener('DOMContentLoaded', () => scrollToBottom());
-
-        // === ОТПРАВКА ТЕКСТА ===
-        formEl.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const text = inputEl.value.trim();
-            if (!text) return;
-
-            addMessageToUI('USER', text);
-            inputEl.value = '';
-            showTyping(true);
-            setControlsDisabled(true);
-
-            try {
-                const res = await fetch('/api/chat/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        sessionId: sessionIdInput.value || undefined,
-                        requestType: 'TEXT',
-                        content: text,
-                        modelType: getCurrentModelType()
-                    })
-                });
-
-                if (!res.ok) throw new Error('Ошибка сервера');
-                const data = await res.json();
-
-                // Обновляем session_id если он был создан бэкендом
-                if (data.sessionId && !sessionIdInput.value) {
-                    sessionIdInput.value = data.sessionId;
-                }
-
-                addAIMessageToUI(data);
-            } catch (err) {
-                console.error(err);
-                addSystemMessage('⚠️ Ошибка отправки. Попробуйте позже.');
-            } finally {
-                showTyping(false);
-                setControlsDisabled(false);
-                inputEl.focus();
-            }
-        });
-
-        // === ЗАПИСЬ ГОЛОСА ===
-        voiceBtn.addEventListener('click', async () => {
-            if (!isRecording) {
-                await startRecording();
-            } else {
-                stopRecording();
-            }
-        });
 
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                mediaRecorder = new MediaRecorder(stream);
                 audioChunks = [];
-
                 mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
                 mediaRecorder.onstop = async () => {
-                    stream.getTracks().forEach(track => track.stop());
-                    await processVoice();
-                };
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const fd = new FormData();
+                    fd.append('voice', audioBlob, 'recording.wav');
+                    try {
+                        const uploadResp = await fetch('/chat/upload-voice', { method: 'POST', body: fd });
+                        if (!uploadResp.ok) throw new Error('upload failed');
+                        const taskId = await uploadResp.text();
+                        if (!taskId) throw new Error('no taskId');
 
+                        // Добавляем сообщение пользователя с аудиоплеером
+                        addMessageToChat('USER', '🎙️ Голосовое сообщение', taskId);
+                        // Отправляем форму
+                        sendVoice(taskId);
+                    } catch (err) {
+                        console.error(err);
+                        alert('Не удалось отправить голосовое сообщение');
+                        setProcessing(false);
+                    } finally {
+                        if (stream) stream.getTracks().forEach(track => track.stop());
+                        mediaRecorder = null;
+                        audioChunks = [];
+                        btnVoice.classList.remove('recording');
+                        btnVoice.textContent = '🎤 Запись';
+                    }
+                };
                 mediaRecorder.start();
-                isRecording = true;
-                voiceBtn.classList.add('recording');
-                voiceBtn.innerHTML = '⏹️';
-                inputEl.placeholder = '🎙️ Идёт запись... Нажмите ⏹️ для отправки';
+                btnVoice.classList.add('recording');
+                btnVoice.textContent = '⏹️ Остановить';
             } catch (err) {
-                alert('Не удалось получить доступ к микрофону. Проверьте разрешения браузера.');
-                console.error(err);
+                alert('Нет доступа к микрофону');
             }
         }
 
         function stopRecording() {
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                mediaRecorder.stop();
-            }
+            if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
         }
 
-        async function processVoice() {
-            isRecording = false;
-            voiceBtn.classList.remove('recording');
-            voiceBtn.innerHTML = '🎤';
-            inputEl.placeholder = 'Спросите о ПДД...';
-
-            showTyping(true);
-            setControlsDisabled(true);
-
-            // 1. Сначала просто показываем сообщение
-            const userMsgEl = addMessageToUI('USER', '🎙️ Голосовое сообщение');
-
-            try {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                const formData = new FormData();
-                formData.append('voice', audioBlob, 'voice_recording.webm');
-
-                // 2. Загружаем аудио → получаем taskId
-                const uploadRes = await fetch('/chat/upload-voice', {
-                    method: 'POST',
-                    body: formData
-                });
-                if (!uploadRes.ok) throw new Error('Ошибка загрузки аудио');
-                const taskId = await uploadRes.text(); // ✅ Теперь taskId есть!
-
-                // 3. ДОБАВЛЯЕМ плеер для пользователя (ПОСЛЕ получения taskId)
-                const audioWrapper = document.createElement('div');
-                audioWrapper.className = 'audio-player';
-
-                const audioEl = document.createElement('audio');
-                audioEl.controls = true;
-                audioEl.preload = 'metadata';
-
-                const source = document.createElement('source');
-                source.src = `/chat/audio/input/${taskId.replace('.wav', '')}`;
-                source.type = 'audio/wav';
-
-                audioEl.appendChild(source);
-                audioWrapper.appendChild(audioEl);
-                userMsgEl.appendChild(audioWrapper); // ✅ добавляем в нужное сообщение
-
-                // 4. Отправляем задачу ИИ
-                const chatRes = await fetch('/api/chat/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        sessionId: sessionIdInput.value || undefined,
-                        requestType: 'AUDIO',
-                        audio_file: taskId,
-                        modelType: getCurrentModelType()
-                    })
-                });
-
-                if (!chatRes.ok) throw new Error('Ошибка отправки задачи');
-                const chatData = await chatRes.json();
-
-                if (chatData.sessionId && !sessionIdInput.value) sessionIdInput.value = chatData.sessionId;
-
-                // 3. Ожидание готового аудио
-                await pollAudioResponse(taskId, chatData.content);
-
-            } catch (err) {
-                console.error(err);
-                addSystemMessage('⚠️ Ошибка обработки голоса.');
-                showTyping(false);
-                setControlsDisabled(false);
-            }
-        }
-
-        // === ПОЛЛИНГ АУДИО ===
-        async function pollAudioResponse(taskId, textPreview) {
-            const maxAttempts = 30; // ~60 сек
-            let attempts = 0;
-            const audioUrl = `/chat/audio/${taskId.replace('.wav', '')}`;
-
-            while (attempts < maxAttempts) {
-                const res = await fetch(audioUrl, { method: 'HEAD' });
-
-                if (res.status === 200) {
-                    // Готово! Добавляем сообщение ИИ
-                    const aiEl = addAIMessageToUI({ content: textPreview });
-                    const audioEl = document.createElement('audio');
-                    audioEl.controls = true;
-                    audioEl.preload = 'metadata';
-                    audioEl.className = 'audio-player';
-
-                    const source = document.createElement('source');
-                    source.src = audioUrl;
-                    source.type = 'audio/wav';
-
-                    audioEl.appendChild(source);
-                    aiEl.querySelector('.bubble').after(audioEl);
-
-                    showTyping(false);
-                    setControlsDisabled(false);
-                    return;
-                }
-
-                await new Promise(r => setTimeout(r, 2000));
-                attempts++;
-            }
-            throw new Error('Таймаут ожидания аудио');
-        }
-
-        // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
-        function addMessageToUI(role, text) {
-            const div = document.createElement('div');
-            div.className = `message ${role.toLowerCase()}`;
-            div.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
-            messagesEl.insertBefore(div, typingEl);
-            scrollToBottom();
-            return div;
-        }
-
-        function addAIMessageToUI(data) {
-            const div = document.createElement('div');
-            div.className = 'message ai';
-            div.innerHTML = `<div class="bubble">${escapeHtml(data.content)}</div>`;
-            messagesEl.insertBefore(div, typingEl);
-            scrollToBottom();
-            return div;
-        }
-
-        function addSystemMessage(text) {
-            const div = document.createElement('div');
-            div.className = 'system-msg';
-            div.textContent = text;
-            messagesEl.insertBefore(div, typingEl);
-            scrollToBottom();
-        }
-
-        function showTyping(show) {
-            typingEl.classList.toggle('visible', show);
-            scrollToBottom();
-        }
-
-        function setControlsDisabled(disabled) {
-            inputEl.disabled = disabled;
-            voiceBtn.disabled = disabled;
-            sendBtn.disabled = disabled;
-        }
-
-        function scrollToBottom() {
-            messagesEl.scrollTop = messagesEl.scrollHeight;
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
+        btnVoice.addEventListener('click', () => {
+            if (isProcessing) return;
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') startRecording();
+            else stopRecording();
+        });
     })();
 </script>
 </body>

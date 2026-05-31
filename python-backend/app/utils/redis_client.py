@@ -4,18 +4,10 @@ import redis
 from typing import Optional
 from dotenv import load_dotenv
 import logging
-
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-
 class RedisSessionMemory:
-    """
-    Клиент Redis для хранения суммаризированного контекста сессий.
-    Python использует его как краткосрочную "рабочую память" AI.
-    Полная история хранится в PostgreSQL на стороне Java.
-    """
-
     def __init__(self):
         self.redis = redis.Redis(
             host=os.getenv("REDIS_HOST", "localhost"),
@@ -27,14 +19,12 @@ class RedisSessionMemory:
             retry_on_timeout=True
         )
         self.prefix = "ai:summary:"
-        # TTL по умолчанию: 24 часа (86400 сек)
         self.ttl_seconds = int(os.getenv("REDIS_SUMMARY_TTL", "86400"))
 
     def _get_key(self, session_id: str) -> str:
         return f"{self.prefix}{session_id}"
 
     def get_summary(self, session_id: str) -> Optional[str]:
-        """Получает текущее суммаризированное резюме диалога"""
         try:
             return self.redis.get(self._get_key(session_id))
         except redis.RedisError as e:
@@ -42,7 +32,6 @@ class RedisSessionMemory:
             return None
 
     def save_summary(self, session_id: str, summary: str) -> bool:
-        """Сохраняет обновленное резюме с TTL"""
         try:
             return self.redis.setex(
                 self._get_key(session_id),
@@ -52,9 +41,7 @@ class RedisSessionMemory:
         except redis.RedisError as e:
             logger.error(f"Redis SET error for {session_id}: {e}")
             return False
-
     def delete_session(self, session_id: str) -> bool:
-        """Принудительно очищает память сессии (например, при явном сбросе чата)"""
         try:
             return bool(self.redis.delete(self._get_key(session_id)))
         except redis.RedisError as e:
@@ -62,12 +49,8 @@ class RedisSessionMemory:
             return False
 
     def ping(self) -> bool:
-        """Проверка подключения к Redis"""
         try:
             return self.redis.ping()
         except redis.RedisError:
             return False
-
-
-# Глобальный экземпляр для импорта в других модулях
 redis_memory = RedisSessionMemory()

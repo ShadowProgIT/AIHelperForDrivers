@@ -1,7 +1,5 @@
 import os
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
-
-
 import re
 import math
 import logging
@@ -12,7 +10,6 @@ from langchain_ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 load_dotenv()
@@ -21,50 +18,36 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 PDD_DIR = os.path.join(PROJECT_ROOT, "data", "pdd")
 CHROMA_PATH = os.path.join(PROJECT_ROOT, "chroma_db")
 
-logger.info(f"📂 PROJECT_ROOT: {PROJECT_ROOT}")
-logger.info(f"📂 PDD_DIR: {PDD_DIR}")
-logger.info(f"📂 CHROMA_PATH: {CHROMA_PATH}")
+logger.info(f"PROJECT_ROOT: {PROJECT_ROOT}")
+logger.info(f"PDD_DIR: {PDD_DIR}")
+logger.info(f"CHROMA_PATH: {CHROMA_PATH}")
 
-# ==========================================================
-# 1. УМНЫЙ ЧАНКИНГ С ФАЛЛБЭКОМ
-# ==========================================================
+
 def split_documents_smart(documents: List[Document], chunk_size: int = 1100, chunk_overlap: int = 150) -> List[
     Document]:
-    """
-    Пробует разбить по пунктам ПДД. Если структура не найдена или слишком бедная —
-    автоматически использует стандартный RecursiveCharacterTextSplitter.
-    """
     chunked_docs = []
-    # Паттерн ищем в начале строк или после переносов: "1.1. ", "12.45. ", "Приложение 2. "
     pdd_pattern = re.compile(r'(?:(?<=\n)|^)(\d{1,2}\.\d{1,2}\.\s|Приложение\s+\d+\.)')
-
     for doc in documents:
         text = doc.page_content.strip()
         if not text:
             continue
-
-        # Проверяем, есть ли в тексте достаточно пунктов для логического разбиения
         matches = list(pdd_pattern.finditer(text))
-        is_pdd_formatted = len(matches) >= 3  # Если нашли 3+ пункта, считаем структуру валидной
+        is_pdd_formatted = len(matches) >= 3
 
         if is_pdd_formatted:
-            # === ЛОГИЧЕСКИЙ ЧАНКИНГ ===
             segments = []
             start_idx = 0
             for match in matches:
                 if start_idx < match.start():
                     segments.append(text[start_idx:match.start()].strip())
                 start_idx = match.start()
-            segments.append(text[start_idx:].strip())  # Последний сегмент
-
+            segments.append(text[start_idx:].strip())
             current_chunk = ""
             current_meta = doc.metadata.copy()
 
             for seg in segments:
                 if not seg:
                     continue
-
-                # Вытаскиваем номер пункта в метаданные
                 p_num_match = pdd_pattern.search(seg)
                 if p_num_match:
                     current_meta["paragraph"] = p_num_match.group(1).strip()
@@ -77,11 +60,9 @@ def split_documents_smart(documents: List[Document], chunk_size: int = 1100, chu
 
             if current_chunk:
                 chunked_docs.append(Document(page_content=current_chunk, metadata=current_meta.copy()))
-
         else:
-            # === СТАНДАРТНЫЙ ФАЛЛБЭК ===
             logger.warning(
-                f"📄 {doc.metadata.get('source', 'Unknown')} не содержит явной структуры ПДД. Используется стандартный чанкинг.")
+                f" {doc.metadata.get('source', 'Unknown')} не содержит явной структуры ПДД. Используется стандартный чанкинг.")
             splitter = RecursiveCharacterTextSplitter(
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
@@ -89,13 +70,9 @@ def split_documents_smart(documents: List[Document], chunk_size: int = 1100, chu
             )
             chunked_docs.extend(splitter.split_documents([doc]))
 
-    logger.info(f"✅ Умный чанкинг завершён. Всего фрагментов: {len(chunked_docs)}")
+    logger.info(f"Умный чанкинг завершён. Всего фрагментов: {len(chunked_docs)}")
     return chunked_docs
 
-
-# ==========================================================
-# 2. ВЕКТОРНОЕ ХРАНИЛИЩЕ
-# ==========================================================
 def get_vectorstore() -> Chroma:
     embeddings = OllamaEmbeddings(
         model="nomic-embed-text",
@@ -103,10 +80,10 @@ def get_vectorstore() -> Chroma:
     )
 
     if os.path.exists(CHROMA_PATH):
-        logger.info("📂 Загружаем существующую векторную базу...")
+        logger.info("Загружаем существующую векторную базу...")
         return Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
 
-    logger.info("🛠️ Создание новой векторной базы...")
+    logger.info("Создание новой векторной базы...")
     documents = []
     if not os.path.exists(PDD_DIR):
         raise FileNotFoundError(f"Папка {PDD_DIR} не найдена!")
@@ -117,38 +94,28 @@ def get_vectorstore() -> Chroma:
             documents.extend(PyPDFLoader(file_path).load())
         elif filename.endswith(".txt"):
             documents.extend(TextLoader(file_path, encoding='utf-8').load())
-
     if not documents:
         raise ValueError("Документы не найдены")
-
     chunks = split_documents_smart(documents)
-    logger.info(f"📦 Индексируем {len(chunks)} чанков в Chroma...")
-
+    logger.info(f"Индексируем {len(chunks)} чанков в Chroma...")
     return Chroma.from_documents(documents=chunks, embedding_function=embeddings, persist_directory=CHROMA_PATH)
 
 
-# ==========================================================
-# 3. ДЕДУПЛИКАЦИЯ
-# ==========================================================
 def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     dot = sum(a * b for a, b in zip(vec1, vec2))
     norm1 = math.sqrt(sum(a * a for a in vec1))
     norm2 = math.sqrt(sum(b * b for b in vec2))
     return dot / (norm1 * norm2) if norm1 and norm2 else 0.0
 
-
 def deduplicate_documents(
         docs_with_scores: List[Tuple[Document, float]],
         embeddings_model,
         threshold: float = 0.92
 ) -> List[Tuple[Document, float]]:
-    """Убирает семантически дублирующиеся чанки, оставляя самый релевантный."""
     if not docs_with_scores:
         return []
-
     unique_docs = []
     unique_embeddings = []
-
     for doc, score in docs_with_scores:
         doc_emb = embeddings_model.embed_query(doc.page_content)
         is_duplicate = False
@@ -159,33 +126,18 @@ def deduplicate_documents(
         if not is_duplicate:
             unique_docs.append((doc, score))
             unique_embeddings.append(doc_emb)
-
-    logger.debug(f"🔍 Дедупликация: {len(docs_with_scores)} → {len(unique_docs)} уникальных")
+    logger.debug(f"Дедупликация: {len(docs_with_scores)} → {len(unique_docs)} уникальных")
     return unique_docs
 
-
-# ==========================================================
-# 4. ПОИСК (EMBEDDING RETRIEVER + DE-DUP)
-# ==========================================================
 def search_pdd(query: str, k: int = 5) -> Tuple[str, List[str]]:
     vectorstore = get_vectorstore()
     embeddings = vectorstore._embedding_function
-
-    # 1. Берём с запасом (k*2) для последующей дедупликации
     docs_with_scores = vectorstore.similarity_search_with_score(query, k=k * 2)
-
-    # 2. Дедупликация
     unique_docs = deduplicate_documents(docs_with_scores, embeddings, threshold=0.92)
-
-    # 3. Берём топ-k
     final_docs = [doc for doc, _ in unique_docs[:k]]
-
     if not final_docs:
         return "Контекст не найден.", []
-
-    # 4. Формируем ответ
     context = "\n===\n".join([d.page_content for d in final_docs])
     sources = list(set([d.metadata.get('source', 'ПДД_РФ') for d in final_docs]))
-
-    logger.info(f"🔎 Найдено {len(final_docs)} фрагментов | Источники: {sources}")
+    logger.info(f" Найдено {len(final_docs)} фрагментов | Источники: {sources}")
     return context, sources
