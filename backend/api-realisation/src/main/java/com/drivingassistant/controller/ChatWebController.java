@@ -6,6 +6,7 @@ import com.drivingassistant.enums.AiModelType;
 import com.drivingassistant.service.contract.AiChatService;
 import com.drivingassistant.service.contract.VoiceService;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +16,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 @Controller
@@ -79,5 +83,33 @@ public class ChatWebController {
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    // === НОВЫЙ ЭНДПОИНТ: воспроизведение пользовательских записей ===
+    @GetMapping("/audio/input/{taskId}")
+    @ResponseBody
+    public ResponseEntity<Resource> getUserVoiceAudio(@PathVariable String taskId) throws IOException {
+        // Получаем путь к входной директории (где хранятся записи пользователя)
+        Path audioFile = Paths.get(voiceService.getInputDirPath()).resolve(taskId + ".wav");
+
+        if (!Files.exists(audioFile)) {
+            // Пробуем с явным расширением
+            Path audioFileWithExt = Paths.get(voiceService.getInputDirPath()).resolve(taskId);
+            if (!Files.exists(audioFileWithExt)) {
+                return ResponseEntity.notFound().build();
+            }
+            audioFile = audioFileWithExt;
+        }
+
+        Resource resource = new UrlResource(audioFile.toUri());
+        if (!resource.exists() || !resource.isReadable()) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "audio/wav")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + taskId + ".wav\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                .body(resource);
     }
 }
