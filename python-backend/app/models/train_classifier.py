@@ -9,6 +9,7 @@ from sklearn.metrics import classification_report, f1_score
 import logging
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 
 def train_classifier(
@@ -22,6 +23,8 @@ def train_classifier(
     """
     # 1. Загрузка данных
     df = pd.read_parquet(data_path)
+
+    df = df.sample(n=30000, random_state=42)
     if 'text_clean' not in df.columns:
         df['text_clean'] = df['text']
 
@@ -74,4 +77,4 @@ def train_classifier(
 
 
 if __name__ == "__main__":
-    train_classifier("app/models/train_dataset_clean.parquet")
+    train_classifier("app/models/safety_dataset.parquet")
