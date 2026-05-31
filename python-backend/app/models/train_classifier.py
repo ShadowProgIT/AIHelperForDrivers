@@ -9,6 +9,7 @@ from sklearn.metrics import classification_report, f1_score
 import logging
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 def train_classifier(
         data_path: str,
@@ -16,6 +17,8 @@ def train_classifier(
         vectorizer_output: str = "app/models/tfidf_vectorizer.pkl"
 ):
     df = pd.read_parquet(data_path)
+
+    df = df.sample(n=30000, random_state=42)
     if 'text_clean' not in df.columns:
         df['text_clean'] = df['text']
 
@@ -58,4 +61,4 @@ def train_classifier(
     return model, vectorizer, f1
 
 if __name__ == "__main__":
-    train_classifier("app/models/train_dataset_clean.parquet")
+    train_classifier("app/models/safety_dataset.parquet")
