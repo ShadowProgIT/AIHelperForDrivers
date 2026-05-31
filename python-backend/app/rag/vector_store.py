@@ -1,4 +1,7 @@
 import os
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
+
 import re
 import math
 import logging
@@ -11,6 +14,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 load_dotenv()
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

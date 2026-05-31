@@ -19,10 +19,10 @@ def get_llm(provider: Literal["local", "global"] = "local"):
             raise ValueError("GIGACHAT_TOKEN not found in .env")
 
         return GigaChat(
-            credentials=token,  # Просто передаем токен
-            scope="GIGACHAT_API_PERS",  # Scope для физлиц
-            model="GigaChat",  # Или "GigaChat"
-            verify_ssl_certs=False,  # Важно для локальной разработки без сертификатов Сбера
+            credentials=token,
+            scope="GIGACHAT_API_PERS",
+            model="GigaChat",
+            verify_ssl_certs=False,
             temperature=0.1
         )
     else:
@@ -30,7 +30,9 @@ def get_llm(provider: Literal["local", "global"] = "local"):
         return OllamaLLM(
             model=os.getenv("OLLAMA_MODEL", "qwen3.5-driving"),
             base_url=os.getenv("OLLAMA_URL", "http://localhost:11434"),
-            temperature=0.1,
-            num_predict=1024
+            temperature=0.3,
+            num_predict=512,
+            repeat_penalty=1.2,
+            stop=["</think>", "<think>", "Thought:", "Analysis:" ],
         )
 

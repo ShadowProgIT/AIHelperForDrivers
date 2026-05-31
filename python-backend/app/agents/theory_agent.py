@@ -69,7 +69,7 @@ QA_PROMPT = PromptTemplate.from_template(
 АКТУАЛЬНЫЙ КОНТЕКСТ ИЗ ПДД:
 {rag_context}
 
-ВОПРОС:
+ВОПРОС ПОЛЬЗОВАТЕЛЯ:
 {question}
 
 ОТВЕТ:"""
