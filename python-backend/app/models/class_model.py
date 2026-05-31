@@ -104,3 +104,9 @@ class SafetyClassifier:
         """Возвращает безопасный ответ-перенаправление"""
         is_harmful, conf, redirect = cls.check(original_question)
         return redirect if is_harmful else None
+
+try:
+    if not SafetyClassifier.load():
+        logger.warning("⚠️ SafetyClassifier не загружен — проверки безопасности отключены (fail-open)")
+except Exception as e:
+    logger.error(f"❌ Критическая ошибка инициализации SafetyClassifier: {e}")

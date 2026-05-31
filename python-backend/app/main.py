@@ -38,6 +38,16 @@ def update_session_summary(background_session_id: str, question: str, answer: st
 
 @app.post("/predict", response_model=JavaResponse)
 async def handle_java_request(background_tasks: BackgroundTasks, request: JavaRequest):
+    if request.requestType == "TEXT" and request.content:
+        from app.utils.safety_guard import guard_request
+        safety = guard_request(request.content)
+
+        if safety["blocked"]:
+            logger.warning(f"🚫 Запрос заблокирован: '{request.content[:100]}...' (conf={safety['confidence']:.2f})")
+            return JavaResponse.error_response(
+                session_id=request.sessionId,
+                message=safety["response"]
+            )
     try:
         # === Конвертация modelType → provider ===
         # Java присылает "LOCAL"/"GLOBAL", наш код ожидает "local"/"global"

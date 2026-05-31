@@ -32,7 +32,9 @@
     <div th:each="msg : ${messages}" class="msg" th:classappend="${msg.sender.name() == 'USER'} ? 'user' : 'ai'">
         <span class="sender-name" th:text="${msg.sender.name() == 'USER'} ? 'Вы' : 'Ассистент'"></span>
         <div th:text="${msg.content}"></div>
-        <audio th:if="${msg.audioFile}" controls style="width: 100%; margin-top: 5px;" th:src="@{'/chat/audio/' + ${msg.audioFile}}"></audio>
+        <audio th:if="${msg.audioFile != null and !#strings.isEmpty(msg.audioFile)}"
+               controls style="width: 100%; margin-top: 5px;"
+               th:src="@{'/chat/audio/' + ${msg.audioFile}}"></audio>
     </div>
 
     <!-- Лоадер -->
@@ -87,25 +89,28 @@
         chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    // Отправка по Enter
-    input.addEventListener('keypress', e => {
+        // Отправка по Enter
+        input.addEventListener('keypress', e => {
         if (e.key === 'Enter') {
             e.preventDefault();
             const text = input.value.trim();
             if (text) {
-                // Сразу показываем сообщение пользователя
                 appendMessage('USER', text);
+                input.value = ''; // 🔹 Очищаем поле ввода
+                document.getElementById('audFile').value = ''; // 🔹 Сбрасываем скрытое поле аудио
                 loader.style.display = 'block';
                 form.submit();
             }
         }
     });
 
-    // Отправка формы
-    form.addEventListener('submit', () => {
+        // Отправка формы
+        form.addEventListener('submit', () => {
         const text = input.value.trim();
         if (text && document.getElementById('reqType').value === 'TEXT') {
             appendMessage('USER', text);
+            input.value = ''; // 🔹 Очищаем поле ввода
+            document.getElementById('audFile').value = ''; // 🔹 Сбрасываем скрытое поле аудио
         }
         loader.style.display = 'block';
         chatBox.scrollTop = chatBox.scrollHeight;
