@@ -258,7 +258,7 @@
         <h2>AI Помощник водителя <span class="status-badge">● онлайн</span></h2>
     </div>
     <div class="chat-box" id="chatBox">
-        <!-- История загружается с сервера -->
+
         <div th:each="msg : ${messages}" class="msg" th:classappend="${msg.sender.name() == 'USER'} ? 'user' : 'ai'">
             <div class="message-meta">
                 <span class="avatar" th:text="${msg.sender.name() == 'USER'} ? '👤' : '🤖'"></span>
@@ -306,7 +306,6 @@
 
 <script>
     (function() {
-        // Элементы
         const chatBox = document.getElementById('chatBox');
         const textInput = document.getElementById('txtInput');
         const btnSend = document.getElementById('btnSend');
@@ -388,19 +387,19 @@
             }
         }
 
-        // Отправка текстового сообщения
+
         function sendTextMessage() {
             if (isProcessing) return;
             const rawText = textInput.value.trim();
             if (!rawText) return;
 
-            // Подготовка скрытой формы
+
             hiddenReqType.value = 'TEXT';
             hiddenContent.value = rawText;
             hiddenAudioFile.value = '';
             updateModelField();
 
-            // Локально добавляем сообщение в чат
+
             addMessageToChat('USER', rawText, null);
             textInput.value = '';
 
@@ -409,7 +408,7 @@
             hiddenForm.submit();
         }
 
-        // Отправка голосового сообщения
+
         function sendVoice(taskId) {
             hiddenReqType.value = 'AUDIO';
             hiddenContent.value = '';
@@ -421,7 +420,7 @@
             hiddenForm.submit();
         }
 
-        // Обработчики
+
         textInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !isProcessing && textInput.value.trim()) {
                 e.preventDefault();
@@ -436,7 +435,7 @@
             }
         });
 
-        // Голосовая запись
+
         let mediaRecorder = null;
         let audioChunks = [];
 
@@ -456,9 +455,9 @@
                         const taskId = await uploadResp.text();
                         if (!taskId) throw new Error('no taskId');
 
-                        // Добавляем сообщение пользователя с аудиоплеером
+
                         addMessageToChat('USER', '🎙️ Голосовое сообщение', taskId);
-                        // Отправляем форму
+
                         sendVoice(taskId);
                     } catch (err) {
                         console.error(err);

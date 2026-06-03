@@ -1,7 +1,7 @@
 package com.drivingassistant.service.impl;
 
 import com.drivingassistant.service.contract.VoiceService;
-import jakarta.annotation.PostConstruct; // 1️⃣ Исправлено на Jakarta для Spring Boot 3
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,16 +37,15 @@ public class VoiceServiceImpl implements VoiceService {
     public void init() throws IOException {
         this.inputDir = Paths.get(inputDirStr).toAbsolutePath().normalize();
         Files.createDirectories(this.inputDir);
-        log.info("✅ Voice input directory ready: {}", inputDir);
+        log.info("Voice input directory ready: {}", inputDir);
 
         this.outputDir = Paths.get(outputDirStr).toAbsolutePath().normalize();
         if (Files.notExists(this.outputDir)) {
-            Files.createDirectories(this.outputDir); // Безопасно создаём, если Python ещё не запускался
+            Files.createDirectories(this.outputDir);
         }
-        log.info("📦 Voice output directory ready: {}", outputDir);
+        log.info("Voice output directory ready: {}", outputDir);
     }
 
-    /** Вспомогательный метод для корректного разрешения пути независимо от наличия расширения */
     private Path resolveAudioPath(String taskId) {
         if (taskId == null || taskId.isBlank()) return null;
         String fileName = taskId.endsWith(".wav") ? taskId : taskId + ".wav";
@@ -60,33 +59,33 @@ public class VoiceServiceImpl implements VoiceService {
         String fileName = taskId + ".wav";
         Path destination = inputDir.resolve(fileName);
         file.transferTo(destination);
-        log.debug("🎙️ Saved input audio: {} → {}", fileName, destination);
+        log.debug("Saved input audio: {} → {}", fileName, destination);
         return taskId;
     }
 
     @Override
     public boolean isReady(String taskId) {
         if (taskId == null || taskId.isBlank()) return false;
-        Path audioFile = resolveAudioPath(taskId); // 2️⃣ Используем умное разрешение пути
+        Path audioFile = resolveAudioPath(taskId);
         boolean ready = Files.exists(audioFile);
-        log.debug(ready ? "✅ Audio ready: {}" : "⏳ Audio not ready: {}", audioFile);
+        log.debug(ready ? "Audio ready: {}" : "Audio not ready: {}", audioFile);
         return ready;
     }
 
     @Override
     public Resource getResponseAudio(String taskId) throws IOException {
         if (taskId == null || taskId.isBlank()) throw new IOException("taskId не может быть пустым");
-        Path audioFile = resolveAudioPath(taskId); // 2️⃣ Используем умное разрешение пути
+        Path audioFile = resolveAudioPath(taskId);
 
         if (!Files.exists(audioFile)) {
-            log.warn("❌ Audio file not found: {}", audioFile);
+            log.warn("Audio file not found: {}", audioFile);
             throw new IOException("Аудио-ответ не найден: " + taskId);
         }
         Resource resource = new UrlResource(audioFile.toUri());
         if (!resource.exists() || !resource.isReadable()) {
             throw new IOException("Не удалось прочитать аудиофайл: " + audioFile);
         }
-        log.debug("🔊 Serving audio response: {}", audioFile);
+        log.debug("Serving audio response: {}", audioFile);
         return resource;
     }
 

@@ -57,14 +57,10 @@ public class SessionManager {
         return KEY_PREFIX + sessionId;
     }
 
-    @Transactional // ← важно: атомарность БД + логика
+    @Transactional
     public void deleteSession(String sessionId) {
         if (sessionId == null || sessionId.isBlank()) return;
-
-        // 1. Чистим PostgreSQL (в транзакции)
         int deleted = messageRepository.deleteBySessionId(sessionId);
-
-        // 2. Чистим Redis
         redisTemplate.delete(buildKey(sessionId));
     }
 

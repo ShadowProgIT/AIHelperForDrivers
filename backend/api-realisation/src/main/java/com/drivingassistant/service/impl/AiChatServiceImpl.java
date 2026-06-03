@@ -47,12 +47,10 @@ public class AiChatServiceImpl implements AiChatService {
         }
         final String finalSessionId = sessionId;
 
-        // Если фронт не передал модель, по умолчанию используем локальную
         AiModelType modelType = request.modelType() != null ? request.modelType() : AiModelType.LOCAL;
 
-        String userContent = request.content() != null ? request.content() : "🎙️ Голосовое сообщение";
+        String userContent = request.content() != null ? request.content() : "Голосовое сообщение";
 
-        // 🔹 Гарантируем сохранение null, а не пустой строки "", для текстовых запросов
         String userAudio = request.audioFile();
         if (userAudio != null && userAudio.isBlank()) {
             userAudio = null;
@@ -62,7 +60,7 @@ public class AiChatServiceImpl implements AiChatService {
 
         if ("AUDIO".equalsIgnoreCase(request.requestType())) {
             CompletableFuture.runAsync(() -> processVoiceAsync(finalSessionId, request.audioFile(), modelType));
-            return new ChatResponseDto(finalSessionId, "🎙️ Обработка голосового запроса...", null);
+            return new ChatResponseDto(finalSessionId, "Обработка голосового запроса...", null);
         }
 
         ChatResponseDto aiResponse = callAi(finalSessionId, "TEXT", request.content(), null, modelType);
@@ -70,21 +68,20 @@ public class AiChatServiceImpl implements AiChatService {
         return aiResponse;
     }
 
-    /** Асинхронный вызов для голоса */
     private void processVoiceAsync(String sessionId, String audioFile, AiModelType modelType) {
         try {
             ChatResponseDto resp = callAi(sessionId, "AUDIO", null, audioFile, modelType);
             if (resp != null) {
-                String content = resp.content() != null ? resp.content() : "🎧 Голосовой ответ от ИИ";
+                String content = resp.content() != null ? resp.content() : "Голосовой ответ от ИИ";
                 messageRepository.save(new Message(sessionId, SenderType.AI, content, resp.audioResponse()));
             }
         } catch (Exception e) {
-            System.err.println("❌ Ошибка асинхронной обработки голоса: " + e.getMessage());
-            messageRepository.save(new Message(sessionId, SenderType.AI, "⚠️ Ошибка обработки аудио", null));
+            System.err.println("Ошибка асинхронной обработки голоса: " + e.getMessage());
+            messageRepository.save(new Message(sessionId, SenderType.AI, "Ошибка обработки аудио", null));
         }
     }
 
-    /** Универсальный вызов Python */
+
     private ChatResponseDto callAi(String sessionId, String requestType, String content, String audioFile, AiModelType modelType) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("sessionId", sessionId);

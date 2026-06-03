@@ -34,7 +34,6 @@ public class HistoryCleanupScheduler {
     public void cleanupExpiredHistory() {
         Instant cutoff = Instant.now().minus(retentionPeriod);
 
-        // Быстрая проверка: есть ли что удалять?
         if (!messageRepository.existsOlderThan(cutoff)) {
             log.debug("No messages older than {} found, skipping cleanup", cutoff);
             return;
@@ -44,14 +43,12 @@ public class HistoryCleanupScheduler {
         int totalDeleted = 0;
         boolean hasMore;
 
-        // Батч-удаление: чтобы не блокировать таблицу надолго
         do {
             int deleted = messageRepository.deleteBatchOlderThan(cutoff, batchSize);
             totalDeleted += deleted;
             hasMore = deleted == batchSize;
 
             if (hasMore) {
-                // Даём БД "передохнуть" между батчами
                 try {
                     Thread.sleep(50);
                 } catch (InterruptedException e) {
